@@ -340,23 +340,11 @@ class Connector:
 
     @staticmethod
     def get_elapsed_reminders(timestamp):
-
+        """get the reminders due before timestamp, without deleting them
+           the caller deletes each one once it was handled
+        """
         rems =  list(Connector.db.reminders.find({'at': {'$lt': timestamp}}))
         rems = list(map(Reminder, rems))
-
-        # this method gets the entries
-        log.warning('Requested reminder without deleting from db')
-        return rems
-
-
-    @staticmethod
-    def pop_elapsed_reminders(timestamp):
-
-        rems =  list(Connector.db.reminders.find({'at': {'$lt': timestamp}}))
-        rems = list(map(Reminder, rems))
-
-        # this method pops the entries
-        Connector.db.reminders.delete_many({'at': {'$lt': timestamp}})
 
         return rems
 

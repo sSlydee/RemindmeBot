@@ -330,7 +330,9 @@ class ReminderModule(commands.Cog):
     async def check_pending_reminders(self):
         now = datetime.utcnow()
 
-        pending_rems = Connector.pop_elapsed_reminders(now.timestamp())
+        # delete each reminder only after it was handled:
+        # a crash or restart while sending must not lose the pending ones
+        pending_rems = Connector.get_elapsed_reminders(now.timestamp())
         
         for reminder in pending_rems:
             try:
@@ -340,6 +342,10 @@ class ReminderModule(commands.Cog):
                 t = (type(e), e, e.__traceback__)
                 log.error(''.join(traceback.format_exception(*t)))
                 Analytics.register_exception(e) # add these to ex counter
+
+            # also after an error: a reminder that always fails must not be retried forever
+            # (not in a finally: a shutdown while sending must keep the reminder)
+            Connector.delete_reminder(reminder._id)
 
             Analytics.reminder_delay(reminder, now=now, allowed_delay=1*60)
 
