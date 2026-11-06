@@ -322,11 +322,23 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         self.stm = stm
         self.update_btn_activation()
 
+    # one-click repetitions, based on the date and time of the reminder
+    QUICK_RULES = {
+        'daily': ('Every day', 'FREQ=DAILY'),
+        'weekdays': ('Every weekday (Mon-Fri)', 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'),
+        'weekly': ('Every week', 'FREQ=WEEKLY'),
+        'biweekly': ('Every 2 weeks', 'FREQ=WEEKLY;INTERVAL=2'),
+        'monthly': ('Every month', 'FREQ=MONTHLY'),
+        'yearly': ('Every year', 'FREQ=YEARLY'),
+    }
+
     def get_embed(self) -> discord.Embed:
         return discord.Embed(
             title='Add new rules',
-            description='Specify which type of rule you want to add to this reminder.\n'\
-                        'You can use an [RRULE Generator](https://www.textmagic.com/free-tools/rrule-generator)'
+            description='Pick a quick repetition below, or add a rule written like '\
+                        '`every friday at 7`, `every 2 weeks` or `every weekday`.\n'\
+                        'Full [RRULEs](https://www.textmagic.com/free-tools/rrule-generator) work too '\
+                        '(e.g. `FREQ=MONTHLY;BYDAY=1MO`).'
         )
 
     def update_btn_activation(self):
@@ -357,9 +369,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         else:
             dtstart = lib.ReminderRepeater.utc_to_rule_frame(self.reminder.at, lib.ReminderRepeater.instance_id_of(self.reminder))
 
-        rrule_input = user_input.lower()
         rule_tz = Connector.get_timezone(lib.ReminderRepeater.instance_id_of(self.reminder))
-        rrule, error = lib.input_parser.rrule_normalize(rrule_input, dtstart, rule_tz)
+        rrule, error = self._parse_rule(user_input, dtstart, rule_tz)
 
         # transfer 
         msg = None
@@ -384,6 +395,10 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             eb = discord.Embed(title=f'New {action_str}',
                            description='Add the rule `{:s}`?. The reminder is {:s} triggered according to this rule.'\
                                         .format(str(rrule), action_modifier))
+            preview = self._preview(rrule, rule_tz)
+            if preview:
+                name = 'Skipped dates' if mode == RuleMode.RRULE_EX_ADD else 'Next dates of this rule'
+                eb.add_field(name=name, value=preview, inline=False)
             view = util.interaction.ConfirmDenyView(dangerous_action=False)
             
             msg = await interaction.response.send_message(embed=eb, view=view, ephemeral=True)
@@ -404,6 +419,50 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         self.update_btn_activation() # update in case too many rules are present
         msg = await msg.edit_original_response(embed=eb, view=self)
         
+
+
+    @staticmethod
+    def _parse_rule(user_input: str, dtstart, rule_tz: str):
+        """rule from an RRULE or from natural language ('every friday at 7')
+
+        Returns:
+            (rrule, str): the rule (None on failure) and an error message
+        """
+        text = (user_input or '').strip()
+        if 'freq=' not in text.lower():
+            # natural language, same parser as /remindme
+            parsed, _ = lib.input_parser.parse(text, timeutil.utcnow(), rule_tz)
+            if isinstance(parsed, datetime):
+                return None, 'This is a single date, not a repetition: use `Add Single Date` for it.'
+            if not isinstance(parsed, str):
+                return None, f'Couldn\'t read a repetition from `{text[:100]}`.\n'\
+                             'Try e.g. `every friday at 7`, `every 2 weeks`, or an RRULE like `FREQ=WEEKLY;BYDAY=FR`.'
+            text = parsed
+        return lib.input_parser.rrule_normalize(text.lower(), dtstart, rule_tz)
+
+
+    @staticmethod
+    def _preview(rrule, rule_tz: str, count: int = 3) -> str:
+        """the next dates of a rule (rule frame: local time) as Discord timestamps"""
+        local_tz = tz.gettz(rule_tz)
+        local_now = timeutil.utcnow().replace(tzinfo=tz.UTC).astimezone(local_tz).replace(tzinfo=None)
+        try:
+            dates = list(rrule.xafter(local_now, count=count))
+        except Exception:
+            return ''
+        return '\n'.join(f'<t:{int(d.replace(tzinfo=local_tz).timestamp())}:F>' for d in dates)
+
+
+    @discord.ui.select(
+        placeholder='Quick repeat...',
+        min_values=1,
+        max_values=1,
+        options=[discord.SelectOption(label=label, value=key) for key, (label, _) in QUICK_RULES.items()],
+        row=0
+    )
+    async def quick_repeat(self, select: discord.ui.Select, interaction: discord.Interaction):
+        _, rule = ReminderIntervalAddView.QUICK_RULES[select.values[0]]
+        await self.rrule_callback(interaction, rule, RuleMode.RRULE_ADD)
 
 
     async def date_callback(self, interaction: discord.Interaction, user_input: str, mode: RuleMode):
@@ -464,7 +523,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
     @discord.ui.button(label='Add Repeating Rule', style=discord.ButtonStyle.secondary, row=1)
     async def add_rrule(self, button:  discord.ui.Button, interaction: discord.Interaction):
 
-        modal = RuleModal(field='Enter a new `RRULE`', 
+        modal = RuleModal(field='Repeat, e.g. "every friday at 7" or an RRULE',
                             title='Add Repeating Rule',
                             custom_callback=self.rrule_callback,
                             mode=RuleMode.RRULE_ADD)
@@ -476,7 +535,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
     @discord.ui.button(label='Add Exception Rule', style=discord.ButtonStyle.secondary, row=1)
     async def add_rrule_ex(self, button:  discord.ui.Button, interaction: discord.Interaction):
         
-        modal = RuleModal(field='Reminder will *not* trigger on this rule', 
+        modal = RuleModal(field='Skip, e.g. "every saturday" or an RRULE',
                             title='Add Exception Rule',
                             custom_callback=self.rrule_callback,
                             mode=RuleMode.RRULE_EX_ADD)
