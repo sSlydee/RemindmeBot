@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands
 
 from lib.Connector import Connector
+import lib.permissions
 from lib.Reminder import Reminder
 import lib.input_parser
 
@@ -283,10 +284,11 @@ class ReminderListing(commands.Cog):
     # commands functions
     # =====================
 
-    @commands.slash_command(name='reminder_list', description='List all reminders created by you')
+    @commands.slash_command(name='reminder_list', description='List all reminders created by you',
+                            **lib.permissions.EVERYWHERE)
     async def reminder_list(self, ctx):
 
-        if ctx.guild:
+        if not lib.permissions.is_personal_context(ctx):
             scope = Connector.Scope(is_private=False, guild_id=ctx.guild.id, user_id=ctx.author.id)
         else:
             scope = Connector.Scope(is_private=True, user_id=ctx.author.id)

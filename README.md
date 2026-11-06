@@ -11,7 +11,8 @@ public bot of the original author: to use it, run your own instance (see
 * Repeating reminders (`every friday at 20:15`) and complex patterns (iCalendar RRULE, RFC 5545)
 * Remind other users and roles
 * Per-server timezone (per-user in DMs), with daylight saving
-* Snooze delivered reminders, edit them with `/reminder_list`
+* Snooze delivered reminders, edit them with `/reminder_list`, pause repeating ones
+* Install it on your Discord account to use `/remindme` everywhere, even where the bot is not
 
 <img src="res/remindme.gif" alt="Create a reminder">
 
@@ -30,6 +31,10 @@ Removed, as a personal bot does not need them:
 Fixed or added:
 * repeating reminders keep their local time when built with the buttons,
   and `UNTIL` in UTC is accepted in repeating rules
+* repeating rules without RRULE: a *Quick repeat* menu and natural language
+  (`every friday at 7`); the next three dates are shown, and repeating
+  reminders can be paused
+* user install: `/remindme` everywhere, delivered by DM
 * reminders are deleted only after their delivery attempt,
   and the delivery loops survive database errors
 * snooze counts from the click and keeps the whole message
@@ -212,6 +217,23 @@ with the same link.
 
 Set the server timezone with `/timezone` (for example `Europe/Paris`), the
 default is UTC.
+
+### Install on your account (optional)
+`/remindme`, `/reminder_list` and `/timezone` can also be installed on a user
+account, to use them in DMs, group DMs and servers the bot is not part of.
+There, reminders are private: they are delivered by DM, with the user's own
+timezone (set it with `/timezone` in such a place, or in a DM with the bot), and
+the bot's replies are only visible to the user.
+
+1. In the [Developer Portal](https://discord.com/developers/applications),
+   *Installation*: tick **User Install**, and add the `applications.commands`
+   scope to its default install settings.
+2. Open this link and choose *Add to My Apps*:
+   ```
+   https://discord.com/oauth2/authorize?client_id=CLIENT_ID&integration_type=1&scope=applications.commands
+   ```
+
+The bot must be able to send you DMs (for example by sharing a server with you).
 
 
 ## Development

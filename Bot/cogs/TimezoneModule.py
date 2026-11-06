@@ -69,7 +69,7 @@ class TimezoneModule(discord.Cog):
     ################
 
 
-    async def set_timezone(self, ctx: discord.ApplicationContext, instance_id: int, value: str):
+    async def set_timezone(self, ctx: discord.ApplicationContext, instance_id: int, value: str, ephemeral: bool = False):
         
         responded=False
 
@@ -117,7 +117,7 @@ class TimezoneModule(discord.Cog):
             tz_eb = self._get_tz_error_eb(value)
             view = util.interaction.MulitDropdownView([dd])
 
-            view.message = await ctx.respond(embed=tz_eb, view=view)
+            view.message = await ctx.respond(embed=tz_eb, view=view, ephemeral=ephemeral)
             responded = True
             await view.wait()
 
@@ -137,7 +137,7 @@ class TimezoneModule(discord.Cog):
         view = util.interaction.ConfirmDenyView(dangerous_action=False)
 
         if not responded:
-            view.message = await ctx.respond(embed=tz_eb, view=view)
+            view.message = await ctx.respond(embed=tz_eb, view=view, ephemeral=ephemeral)
         else:
             await ctx.edit(embed=tz_eb, view=view)
 
@@ -160,7 +160,8 @@ class TimezoneModule(discord.Cog):
     # Commands methods
     ##################
     
-    @commands.slash_command(name='timezone', description='Set the timezone of this server') 
+    @commands.slash_command(name='timezone', description='Set the timezone of this server (your own one in DMs)',
+                            **lib.permissions.EVERYWHERE)
     async def set_timezone_sub_cmd(self, 
                                     ctx: discord.ApplicationContext, 
                                     new_timezone: discord.Option(
@@ -171,13 +172,16 @@ class TimezoneModule(discord.Cog):
 
         # if no guild is present
         # assume dm context
-        instance_id = ctx.guild.id if ctx.guild else ctx.author.id
+        # DMs, or a server where only the user installed the app: the user's own timezone
+        if lib.permissions.is_personal_context(ctx):
+            await self.set_timezone(ctx, ctx.author.id, new_timezone, ephemeral=True)
+            return
 
         if not lib.permissions.can_change_settings(ctx.author):
             await ctx.respond(embed=lib.permissions.missing_settings_permission_embed(), ephemeral=True)
             return
 
-        await self.set_timezone(ctx, instance_id, new_timezone)
+        await self.set_timezone(ctx, ctx.guild.id, new_timezone)
 
 
 def setup(client):

@@ -12,6 +12,7 @@ from discord.ext import commands
 from util.consts import Consts
 from lib.Connector import Connector
 from lib.Reminder import Reminder, IntervalReminder
+import lib.permissions
 import lib.input_parser
 import lib.ReminderRepeater
 import util.interaction
@@ -151,7 +152,10 @@ class ReminderCreation(commands.Cog):
 
     async def process_reminder(self, ctx: discord.ApplicationContext, author: Union[discord.User, discord.Member], target, period, message, channel):
 
-        if ctx.guild:
+        # DMs, or a server where only the user installed the app: private reminder, by DM
+        personal = lib.permissions.is_personal_context(ctx)
+
+        if not personal:
             instance_id = ctx.guild.id
             # try and get the last message, for providing a jump link
             try:
@@ -224,7 +228,7 @@ class ReminderCreation(commands.Cog):
                 await ctx.respond(embed=embed, ephemeral=True)
                 return
 
-        if auto_del_action == Connector.AutoDelete.HIDE:
+        if auto_del_action == Connector.AutoDelete.HIDE or personal:
             defer_hidden=True
         else:
             defer_hidden=False
@@ -316,10 +320,15 @@ class ReminderCreation(commands.Cog):
             delete_after = None
             hidden=True
 
+        if personal:
+            # don't post into a DM with someone else or a server the bot is not part of
+            delete_after = None
+            hidden = True
+
 
         stm = util.reminderInteraction.STM(
             ctx,
-            Connector.Scope(is_private=False, guild_id=ctx.guild.id if ctx.guild else None, user_id=ctx.author.id)
+            Connector.Scope(is_private=personal, guild_id=None if personal else ctx.guild.id, user_id=ctx.author.id)
         )
         stm.tz_str = tz_str
 
@@ -359,13 +368,14 @@ class ReminderCreation(commands.Cog):
         await self.process_reminder(ctx, ctx.author, target, time, message, channel=channel)
     
 
-    @commands.slash_command(name='remindme', description='set a reminder after a certain time period')
+    @commands.slash_command(name='remindme', description='set a reminder after a certain time period',
+                            **lib.permissions.EVERYWHERE)
     async def remindme(self, ctx:discord.ApplicationContext,
                         time:discord.Option(str, 'time/date when the reminder is triggered (see syntax page on /help)', required=True),
                         message:discord.Option(str, 'the bot will remind you with this message', required=True)):
                         #channel:discord.Option((discord.TextChannel,discord.VoiceChannel), 'Show the reminder in a channel other than the current one', required=False)=None):
         channel = None
-        if ctx.guild:
+        if not lib.permissions.is_personal_context(ctx):
             channel = channel or ctx.channel # overwrite if not specified
 
         await self.process_reminder(ctx, ctx.author, ctx.author, time, message, channel=channel)

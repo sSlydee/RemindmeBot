@@ -3,6 +3,33 @@ import discord
 from util.consts import Consts
 
 
+# commands usable everywhere once a user installed the app on their account:
+# DMs, group DMs and servers the bot is not a member of
+EVERYWHERE = {
+    'integration_types': {discord.IntegrationType.guild_install, discord.IntegrationType.user_install},
+    'contexts': {discord.InteractionContextType.guild,
+                 discord.InteractionContextType.bot_dm,
+                 discord.InteractionContextType.private_channel},
+}
+
+
+def is_personal_context(ctx) -> bool:
+    """True where the bot cannot post later: DMs, group DMs, and servers in
+       which only the user installed the app (the bot is not a member there)
+
+    In those places reminders are private: delivered by DM, with the user's
+    own timezone and settings.
+    """
+    interaction = getattr(ctx, 'interaction', ctx)
+    if not interaction.guild_id:
+        return True
+    owners = interaction.authorizing_integration_owners
+    if owners is None or (owners.guild_id is None and owners.user_id is None):
+        # no install data: assume the bot is in the server (previous behaviour)
+        return False
+    return owners.guild_id != interaction.guild_id
+
+
 def can_change_settings(user) -> bool:
     """server settings need the 'Manage Server' permission (administrators have it)
 
