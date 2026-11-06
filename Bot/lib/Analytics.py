@@ -340,9 +340,9 @@ class Analytics:
 
 
         if isinstance(reminder, IntervalReminder):
-            t = Types.ReminderType.ONE_SHOT
-        else:
             t = Types.ReminderType.REPEATING
+        else:
+            t = Types.ReminderType.ONE_SHOT
         Analytics.REMINDER_TRIGGERED_CNT.labels(str(shard), t.name).inc()
         
         
