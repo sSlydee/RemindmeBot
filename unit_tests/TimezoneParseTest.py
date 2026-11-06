@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 from datetime import datetime, timedelta
 
-import Bot.lib.input_parser as p
+import lib.input_parser as p
 
 
 class TimezoneParseTest(unittest.TestCase):

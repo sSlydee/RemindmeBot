@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from datetime import datetime, timedelta
 from dateutil.tz import gettz
 
-import Bot.lib.input_parser as p
+import lib.input_parser as p
 
 
 
