@@ -216,14 +216,12 @@ class BasicParseTest(unittest.TestCase):
 
 
     def test_epoch_overflow(self):
-        # reminders are stored in unix timestmaps
-        # but datetime can represent greater intervals
-        # those cannot be stored and must be failed
-
-        # choose target date which is out of unix epoch
-        # but doesn't overflow the datetime object
+        # reminders are stored as unix timestamps
+        # parse() refuses dates the platform cannot convert (OSError),
+        # which was the case for year 5000 on 32-bit/Windows systems.
+        # 64-bit Linux handles it, so the date is accepted there
         at, _ = p.parse('00:00 1st jan 5000', self.utcnow)
-        self.assertEqual(at, self.utcnow)
+        self.assertEqual(at, datetime(year=5000, month=1, day=1))
 
 
 class BasicPushbackTest(unittest.TestCase):
