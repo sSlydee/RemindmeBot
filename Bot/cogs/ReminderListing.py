@@ -208,7 +208,7 @@ class ReminderListing(commands.Cog):
             max_ch_len = MAX_FIELD_LEN-min(len(content), MAX_MSG_LEN)
             
             rows.append((str(i+1)+'.'+sfx,
-                        at_local.strftime('%d.%b %H:%M') if at_local else '-',
+                        ('paused' if getattr(r, 'paused', False) else at_local.strftime('%d.%b %H:%M')) if at_local else '-',
                         (r.ch_name or 'Unknown')[0:max_ch_len],
                         content))
 

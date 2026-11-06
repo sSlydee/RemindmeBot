@@ -152,6 +152,12 @@ class Connector:
                                                                                     'exrules': intvl_js['exrules']}}, new=False, upsert=False)
 
     @staticmethod
+    def set_interval_paused(interval_id, paused: bool) -> bool:
+        result = Connector.db.intervals.find_one_and_update({'_id': interval_id}, {'$set': {'paused': paused}})
+        return result is not None
+
+
+    @staticmethod
     def update_reminder_at(reminder: Reminder):
 
         at_ts = reminder._to_json()['at']

@@ -1,4 +1,5 @@
 import discord # for reminder
+from datetime import timedelta
 from dateutil import tz
 import dateutil.rrule as rr
 
@@ -352,6 +353,8 @@ class IntervalReminder(Reminder):
         self.exrules = json.get('exrules', [])
         self.rdates = json.get('rdates', [])
         self.rrules = json.get('rrules', [])
+        # a paused interval keeps its schedule but is not delivered
+        self.paused = json.get('paused', False)
 
 
     def _to_json(self):
@@ -365,7 +368,36 @@ class IntervalReminder(Reminder):
         if self.first_at:
             d['first_at'] = utc_timestamp(self.first_at)
 
+        d['paused'] = self.paused
+
         return d
+
+
+    def upcoming(self, count=3, tz_str=None) -> list:
+        """the next occurrences (naive UTC), starting with .at"""
+        if not self.at:
+            return []
+        if not tz_str:
+            instance_id = self.g_id if self.g_id else self.author
+            tz_str = lib.Connector.Connector.get_timezone(instance_id)
+
+        dates = [self.at]
+        while len(dates) < count:
+            nxt = self.next_trigger(dates[-1] + timedelta(seconds=1), tz_str=tz_str)
+            if not nxt:
+                break
+            dates.append(nxt)
+        return dates
+
+
+    def add_upcoming_field(self, eb: discord.Embed, tz_str=None):
+        """add the next occurrences to the embed, to check the rules at a glance"""
+        dates = self.upcoming(3, tz_str=tz_str)
+        if not dates:
+            return
+        lines = [f'<t:{int(utc_timestamp(d))}:F>' for d in dates]
+        name = 'Next occurrences (paused, not delivered)' if self.paused else 'Next occurrences'
+        eb.add_field(name=name, value='\n'.join(lines), inline=False)
 
 
     def get_tiny_embed(self, title='New Interval Created', now=None, info:str=None, rrule_override=None):
@@ -393,7 +425,7 @@ class IntervalReminder(Reminder):
             description += f'\n```Parsing hints:\n{info}```' 
     
         eb = discord.Embed(title=title, description=description, color=0x409fe2)
-        #eb.timestamp = self.at.replace(tzinfo=tz.UTC)
+        self.add_upcoming_field(eb)
         
         
         if rrule_override:
@@ -423,11 +455,13 @@ class IntervalReminder(Reminder):
             [type]: [description]
         """
         eb = super().get_info_embed(tz_str=tz_str, title=title)
-        #eb.timestamp = discord.Embed.Empty
         eb.timestamp = None
-        
+        self.add_upcoming_field(eb, tz_str=tz_str)
+
         in_str = self.get_interval_string()
         prefix = 'Next in ' if self.at else ''
+        if self.paused:
+            prefix = 'Paused, next in ' if self.at else 'Paused, '
         
         eb.set_footer(text=f'{prefix}{in_str}', icon_url='https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/120/twitter/282/repeat-button_1f501.png')
 

@@ -281,6 +281,10 @@ class ReminderModule(commands.Cog):
             Connector.update_interval_at(interval)                
             
         for interval in pending_intvls:
+            if interval.paused:
+                # the schedule moved on above, nothing to send
+                log.debug(f'interval {interval._id} is paused, not delivered')
+                continue
             try:
                 await self.print_reminder(interval)
             except Exception as e:

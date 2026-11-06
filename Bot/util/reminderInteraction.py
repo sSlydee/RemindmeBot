@@ -684,13 +684,25 @@ class ReminderEditView(util.interaction.CustomView):
             self.edit_channel.disabled = True
             self.set_interval.disabled = True
             self.edit_reminder_btn.disabled = True
+            self.pause_btn.disabled = True
 
 
     def _override_edit_label(self):
         if isinstance(self.reminder, IntervalReminder):
             self.set_interval.label = 'Edit Interval' # override decorator
+            self.pause_btn.disabled = self.is_foreign
+            if self.reminder.paused:
+                self.pause_btn.label = 'Resume'
+                self.pause_btn.emoji = '▶️'
+            else:
+                self.pause_btn.label = 'Pause'
+                self.pause_btn.emoji = '⏸️'
         else:
             self.set_interval.label = 'Set Interval'
+            # only repeating reminders can be paused
+            self.pause_btn.label = 'Pause'
+            self.pause_btn.emoji = '⏸️'
+            self.pause_btn.disabled = True
 
 
     def get_embed(self) -> discord.Embed:
@@ -760,6 +772,20 @@ class ReminderEditView(util.interaction.CustomView):
 
         eb = self.get_embed()
         await interaction.edit_original_response(embed=eb, view=self)
+
+
+    @discord.ui.button(label='Pause', emoji='⏸️', style=discord.ButtonStyle.secondary, row=1)
+    async def pause_btn(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not isinstance(self.reminder, IntervalReminder):
+            await interaction.response.defer()
+            return
+
+        # paused intervals keep moving to their next date, but are not sent
+        self.reminder.paused = not self.reminder.paused
+        Connector.set_interval_paused(self.reminder._id, self.reminder.paused)
+
+        self._override_edit_label()
+        await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
 
     @discord.ui.button(label='Return', style=discord.ButtonStyle.secondary, row=2)
