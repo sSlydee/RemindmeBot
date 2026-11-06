@@ -1,4 +1,6 @@
 import asyncio
+import math
+import os
 import re
 import logging
 import traceback
@@ -21,6 +23,7 @@ import lib.ReminderRepeater
 import util.interaction
 from util.verboseErrors import VerboseErrors
 from util.loops import log_errors
+from util.heartbeat import Heartbeat
 from util.consts import Consts
 
 from lib.Analytics import Analytics, Types
@@ -37,6 +40,8 @@ class ReminderModule(commands.Cog):
 
     def __init__(self, client):
         self.client: discord.AutoShardedBot = client
+        # optional Uptime Kuma push monitor, fed by the reminder delivery loop
+        self.heartbeat = Heartbeat(os.getenv('UPTIME_KUMA_PUSH_URL'))
 
         log.debug('starting reminder event loops')
 
@@ -353,6 +358,11 @@ class ReminderModule(commands.Cog):
         sent_in = (datetime.utcnow()-now).total_seconds()
         if sent_in > 1:
             log.debug(f'reminders sent in {sent_in}s')
+
+        # this run worked: tell the monitor, unless the gateway connection is down
+        latency = self.client.latency
+        if self.client.is_ready() and not self.client.is_closed() and math.isfinite(latency):
+            await self.heartbeat.push(msg='OK', ping_ms=latency*1000)
         
     
    
