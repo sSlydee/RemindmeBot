@@ -13,9 +13,7 @@ from discord.ext.servercount import ServerCount
 from lib.Connector import Connector
 from lib.Analytics import Analytics, Types
 from util.loops import log_errors
-
-FEEDBACK_CHANNEL = 872104333007785984
-FEEDBACK_MENTION = 872107119988588566
+from util.consts import Consts
 
 
 logging.basicConfig(level=logging.INFO) # general 3rd party
@@ -154,7 +152,7 @@ async def on_application_command_error(ctx: discord.ApplicationContext, error: E
         eb = discord.Embed(title='An unknown error has ocurred', 
                             description='The bot crashed while execution your command and we don\'t know why\n\n'\
                                         'If you want to help improving this bot, '\
-                                        'please report this crash on the [support server](https://discord.gg/Xpyb9DX3D6)')
+                                        f'please report this crash with the error code on [GitHub]({Consts.github_url}/issues)')
         eb.color = 0xff0000  # red
 
         eb.add_field(name='Error Code', value=str(error_id))
@@ -236,20 +234,19 @@ def set_tokens():
 
 def config_help():
 
-    custom_footer = 'If you like this bot, you can leave a vote at [top.gg](https://top.gg/bot/831142367397412874).\n'\
-                                'If you find a bug contact us on [Github](https://github.com/Mayerch1/RemindmeBot) or join the support server.'
+    custom_footer = f'If you find a bug, please report it on [GitHub]({Consts.github_url}/issues).'
 
     Help.init_help(bot, auto_detect_commands=True)
 
     Help.set_default_footer(custom_footer)
-    Help.set_feedback(FEEDBACK_CHANNEL, FEEDBACK_MENTION)
+    # no direct feedback, support server, ToS or privacy notice:
+    # those of the original author's public bot don't apply to this instance
     Help.invite_permissions(
-        discord.Permissions(attach_files=True)
+        # the permissions the bot actually needs (same as the README invite link)
+        discord.Permissions(view_channel=True, send_messages=True, send_messages_in_threads=True,
+                            embed_links=True, read_message_history=True)
     )
-    Help.support_invite('https://discord.gg/Xpyb9DX3D6')
-    Help.set_tos_file('legal/tos.md')
-    Help.set_privacy_file('legal/privacy.md')
-    Help.set_github_url('https://github.com/Mayerch1/RemindmeBot')
+    Help.set_github_url(Consts.github_url)
 
 
     page = HelpPage(

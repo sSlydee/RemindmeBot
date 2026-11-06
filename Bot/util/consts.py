@@ -5,4 +5,7 @@ class Consts:
     col_good = 0x69eb67
 
     col_identity_blue = 0x409fe2
+
+    # where users report bugs (this fork, not the public bot of the original author)
+    github_url = 'https://github.com/sSlydee/RemindmeBot'
     col_identity_lime = 0xe4ff1e

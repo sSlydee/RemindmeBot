@@ -147,8 +147,7 @@ class ReminderCreation(commands.Cog):
                 '\n'\
                 'Call `/help page: syntax` for more detailed information.\n'
                 
-    HELP_FOOTER = 'If you find a bug in the parser, please reach out to us.\n'\
-                  'You can contact us on Github or join the support server.'
+    HELP_FOOTER = 'If you find a bug in the parser, please report it on GitHub.'
 
 
     @staticmethod
