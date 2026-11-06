@@ -1,6 +1,6 @@
 import discord
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from dateutil import tz
 
 from lib.Connector import Connector

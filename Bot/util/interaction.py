@@ -1,6 +1,4 @@
-import asyncio
 from datetime import datetime, timedelta
-import re
 from typing import Union
 
 import discord
@@ -195,7 +193,6 @@ class SnoozeView(CustomView):
         # convert to json and back to reminder object
         # this automatically converts intervals to reminders
         snoozed = Reminder(self.reminder._to_json())
-        user_name = interaction.user.display_name
 
         utcnow = datetime.utcnow()
         snoozed._id = None

@@ -3,8 +3,13 @@ from datetime import datetime, timezone
 from dateutil import tz
 import dateutil.rrule as rr
 
+import logging
+
 import lib.input_parser
 import lib.Connector  # KEEP this syntax, circular import
+
+
+log = logging.getLogger('Remindme.Reminder')
 
 
 # The bot works with naive datetimes in UTC and stores them as unix timestamps.
@@ -204,12 +209,8 @@ class Reminder:
         eb = discord.Embed(title=title, description=f'{self.msg}', color=0xe4ff1e)
 
         if self.created_at:
-            if tz_str == 'UTC':
-                at_str = self.created_at.strftime('%Y-%m-%d %H:%M UTC')
-            else:
-                at_str = self.created_at.replace(tzinfo=tz.UTC).astimezone(tz.gettz(tz_str)).strftime('%Y/%m/%d %H:%M %Z')
-
-            # a naive value would be read in the machine timezone
+            # Discord shows the embed timestamp in each viewer's local time
+            # (a naive value would be read in the machine timezone)
             eb.timestamp = self.created_at.replace(tzinfo=tz.UTC)
             eb.set_footer(text='created: ')
 
@@ -547,7 +548,7 @@ class IntervalReminder(Reminder):
 
         def valid_rule(rule_str):
             if 'interval=0' in rule_str.lower():
-                print(f'rrule {rule_str} failed check')
+                log.warning(f'rrule {rule_str} has a zero interval, ignored')
                 return False
             return True
 

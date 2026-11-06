@@ -1,5 +1,4 @@
 import re
-import copy
 from datetime import datetime, timedelta
 
 import dateutil.parser
@@ -58,16 +57,6 @@ def num_to_emoji(num: int):
         return '0️⃣'
     else:
         return '*️⃣'
-
-
-def _to_int(num_str: str, base: int=10):
-        
-    try:
-        conv_int = int(num_str, base)
-    except ValueError:
-        conv_int = None
-    finally:
-        return conv_int
 
 
 def _split_arg(arg):
@@ -321,10 +310,8 @@ def parse(input, utcnow, timezone='UTC'):
         (str, str):      str: rrule of reocurring event, can be None
                          str: info string on why the parser failed/gnored parst of the input
     """
-    err = False
 
     display_tz = tz.gettz(timezone)
-    tz_now = utcnow.replace(tzinfo=tz.UTC).astimezone(display_tz) # create local time, used for some parsers
     
     # first split into the different arguments
     # next separate number form char arguments

@@ -1,18 +1,12 @@
-import asyncio
-import re
 import logging
 from typing import Union
 
-from enum import Enum
 from datetime import datetime, timedelta
 from dateutil import tz
-from bson import ObjectId
 
-import copy
-from pytz import common_timezones as pytz_common_timezones
 
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 
 from util.consts import Consts
 from lib.Connector import Connector
@@ -145,17 +139,6 @@ class ReminderCreation(commands.Cog):
     HELP_FOOTER = 'If you find a bug in the parser, please report it on GitHub.'
 
 
-    @staticmethod
-    def to_int(num_str: str, base: int=10):
-        
-        try:
-            conv_int = int(num_str, base)
-        except ValueError:
-            conv_int = None
-        finally:
-            return conv_int
-
-
     # =====================
     # internal functions
     # =====================
@@ -175,11 +158,9 @@ class ReminderCreation(commands.Cog):
             except:
                 last_msg = None
             last_msg = last_msg[0] if last_msg else None
-            author_roles = ctx.author.roles
         else:
             instance_id = author.id
             last_msg = None
-            author_roles = []
 
         
         
@@ -292,7 +273,7 @@ class ReminderCreation(commands.Cog):
             rem.target = target
             rem.target_name = f'<@{target}>'
             rem.target_mention = f'<@{target}>'
-            print('failed to resolve mentionable')
+            log.warning('failed to resolve mentionable, using a user mention')
         elif isinstance(target, discord.member.Member):
             rem.target = target.id
             rem.target_name = target.mention
@@ -370,12 +351,6 @@ class ReminderCreation(commands.Cog):
                         #channel:discord.Option((discord.TextChannel,discord.VoiceChannel), 'Show the reminder in a channel other than the current one', required=False)=None):
 
         channel=None
-        if not target:
-            # TODO: monitor if this ever gets hit
-            target_resolve = await ctx.guild.fetch_member(int(target))
-            log.critical('user not loaded, investigation required')
-            1/0
-
         if ctx.guild:
             # update channel, when not specified (optional parameter)
             channel = channel or ctx.channel

@@ -776,7 +776,7 @@ class ReminderEditView(util.interaction.CustomView):
         eb = view.get_embed()
 
         await interaction.response.edit_message(embed=eb, view=view)
-        timeout = await view.wait()
+        await view.wait()
 
         # go back to normal view
         if view.open_interaction:

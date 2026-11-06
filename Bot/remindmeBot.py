@@ -8,7 +8,7 @@ import sys
 import uuid
 
 from pathlib import Path
-from discord.ext.help import Help, HelpElement, HelpPage
+from discord.ext.help import Help, HelpPage
 
 from lib.Connector import Connector
 from util.consts import Consts

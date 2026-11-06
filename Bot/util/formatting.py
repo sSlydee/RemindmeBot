@@ -8,7 +8,6 @@ def generate_code_table(col_headers, content_rows, description=''):
         content_rows (list<list>): list containing all rows, each row is list with all columns of that row
     """
     col_cnt = len(col_headers)
-    row_cnt = len(content_rows)
     padding = 1
 
     max_row_lens = []
@@ -18,7 +17,6 @@ def generate_code_table(col_headers, content_rows, description=''):
     for row in content_rows:
         for i, col in enumerate(row):
             max_row_lens[i] = max(max_row_lens[i], len(str(col)))
-            pass
 
     # table width does not count outer | | 
     #             padding around vals + max col width     + separator for each col 
@@ -26,7 +24,6 @@ def generate_code_table(col_headers, content_rows, description=''):
 
     
     # first construct the table header and the footer
-    pad_space = ' ' * padding
     header_fields = '|'.join([str.center(str(col), max_row_lens[i]+2*padding, ' ') for i, col in enumerate(col_headers)])
     header_spacer = '|'.join(['-'*(max_row_lens[i]+padding*2) for i, _ in enumerate(col_headers)])
     
@@ -46,7 +43,6 @@ def generate_code_table(col_headers, content_rows, description=''):
               for i, cell in enumerate(row)])
 
         content += '|\n'
-        pass
 
 
     table_str = description + '\n' + header_str + content + footer_str

@@ -1,23 +1,18 @@
 import re
 import logging
 
-from datetime import datetime
-from dateutil import tz
-
-import copy
 import difflib
-from datetime import datetime
 from dateutil import tz
 from dateutil.zoneinfo import getzoneinfofile_stream, ZoneInfoFile
 from pytz import common_timezones as pytz_common_timezones
 
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 
 import lib.permissions
 import util.interaction
+import util.timezones
 from lib.Connector import Connector
-from util.consts import Consts
 
 
 log = logging.getLogger('Remindme.Timezones')
@@ -51,38 +46,6 @@ class TimezoneModule(discord.Cog):
     # Helper methods
     ################
     
-    def _get_tz_info_eb(self, zone, name):
-
-        offset = datetime.now(zone).strftime('%z')
-        local_time = datetime.now(zone).strftime('%H:%M')
-
-        info_str = ''
-        if re.match(r'^UTC\+\d+$', name):
-            info_str += '\n• Consider using your local timezone (instead of `UTC+X`), in order to automatically adjust to daylight-saving*'
-        elif name.lower() == 'mst':
-            info_str += '\n• Consider using `MST7MDT` to respect daylight saving during winter'
-        elif name.lower() == 'est':
-            info_str += '\n• Consider using `EST5EDT` to respect daylight saving during winter'
-        elif name not in pytz_common_timezones:
-            info_str += f'\n• `{name}` seems to be a deprecated timezone and could be discontinued in future versions.\n'\
-                        f'• Try and use a geo-referenced timezone that _observes_ `{name}` instead (e.g. `Europe/Berlin`)'
-
-        if not info_str:
-            # no warnings means green embed
-            col = 0x69eb67
-        else:
-            # some non-critical warnings will show slightly yellow embed
-            col = 0xcceb67  # light yellow
-
-        # put new timezone into embed title
-        # but make sure the title is not exceeding 256 chars
-        eb = discord.Embed(title=f'New Timezone {name[:243]}',
-                        color=col,
-                        description=f'The timezone will be set to `{name}` (`UTC{offset}`)\n'\
-                                    f'This corresponds to a local time of `{local_time}`\n'\
-                                    f'{info_str}')
-
-        return eb
 
 
     def _get_tz_error_eb(self, zone, no_list=False):
@@ -169,7 +132,7 @@ class TimezoneModule(discord.Cog):
                 raise ValueError(f'User selected invalid timezone from dropdown {value}')
 
 
-        tz_eb = self._get_tz_info_eb(tz_obj, value)
+        tz_eb = util.timezones.timezone_embed(value, title='New Timezone', intro='The timezone will be set to')
         view = util.interaction.ConfirmDenyView(dangerous_action=False)
 
         if not responded:

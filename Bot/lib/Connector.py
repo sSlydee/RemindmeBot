@@ -1,9 +1,6 @@
 import os
-from datetime import datetime
 from enum import Enum
-from typing import Union
 
-import pymongo
 from pymongo import MongoClient
 
 from lib.Reminder import Reminder, IntervalReminder
@@ -264,122 +261,41 @@ class Connector:
 
 
     @staticmethod
-    def set_reminder_message(reminder_id, message: str):
-        """set the message of the given reminder
-           can be Reminder or Interval
-           must already be existing in db
-
-        Args:
-            reminder_id (_type_): _description_
-            message (str): _description_
+    def _set_fields(reminder_id, fields: dict) -> bool:
+        """update fields of a stored reminder, which can be a Reminder or an Interval
 
         Returns:
-            _type_: _description_
+            bool: True if the reminder was found
         """
-
-        result = Connector.db.reminders.find_one_and_update({
-            '_id': reminder_id,}, {'$set': {'msg': message}}, new=False, upsert=False
-        )
-
+        result = Connector.db.reminders.find_one_and_update({'_id': reminder_id}, {'$set': fields})
         if not result:
-            result = Connector.db.intervals.find_one_and_update({
-            '_id': reminder_id,}, {'$set': {'msg': message}}, new=False, upsert=False
-        )
-
-        return (result is not None)
+            result = Connector.db.intervals.find_one_and_update({'_id': reminder_id}, {'$set': fields})
+        return result is not None
 
 
     @staticmethod
-    def set_reminder_title(reminder_id, title: str):
-        """set the optional title for the given reminder Id
-           can be Reminder or Interval
-           reminder must already be stored into db
-
-        Args:
-            reminder_id (ObjectId): id of reminder
-            title (str): new title
-
-        Returns:
-            bool: True if set was successfull
-        """
-
-        result = Connector.db.reminders.find_one_and_update({
-            '_id': reminder_id,}, {'$set': {'title': title}}, new=False, upsert=False
-        )
-
-        if not result:
-            result = Connector.db.intervals.find_one_and_update({
-            '_id': reminder_id,}, {'$set': {'title': title}}, new=False, upsert=False
-        )
-
-        return (result is not None)
-
-    @staticmethod
-    def set_reminder_img_url(reminder_id, img_url: str):
-        """set the optional image url for the given reminder Id
-           can be Reminder or Interval
-           reminder must already be stored into db
-
-        Args:
-            reminder_id (ObjectId): id of reminder
-            img_url (str): new url to image
-
-        Returns:
-            bool: True if set was successfull
-        """
-        result = Connector.db.reminders.find_one_and_update({
-            '_id': reminder_id,}, {'$set': {'img_url': img_url}}, new=False, upsert=False
-        )
-
-        if not result:
-            result = Connector.db.intervals.find_one_and_update({
-            '_id': reminder_id,}, {'$set': {'img_url': img_url}}, new=False, upsert=False
-        )
-
-        return (result is not None)
+    def set_reminder_message(reminder_id, message: str) -> bool:
+        return Connector._set_fields(reminder_id, {'msg': message})
 
 
     @staticmethod
-    def set_reminder_channel(reminder_id, channel_id: int, channel_name:str=None):
-        """change the channel id of a given reminder
-           method tries to find reminder, if not exists
-           method will assume an interval
+    def set_reminder_title(reminder_id, title: str) -> bool:
+        return Connector._set_fields(reminder_id, {'title': title})
 
-        Args:
-            reminder_id (ObjectId): reminder/interval ID
 
-        Returns:
-            bool: True if set was successfull
-        """
-        
-        # upsert with channel_name
+    @staticmethod
+    def set_reminder_img_url(reminder_id, img_url: str) -> bool:
+        return Connector._set_fields(reminder_id, {'img_url': img_url})
+
+
+    @staticmethod
+    def set_reminder_channel(reminder_id, channel_id: int, channel_name: str = None) -> bool:
+        fields = {'ch_id': str(channel_id)}
         if channel_name:
-            result = Connector.db.reminders.find_one_and_update({'_id': reminder_id}, 
-                                                            {'$set': {'ch_id': str(channel_id), 'ch_name': str(channel_name)}}, 
-                                                            new=False, 
-                                                            upsert=False)
-            if not result:
-                result = Connector.db.intervals.find_one_and_update({'_id': reminder_id}, 
-                                                                {'$set': {'ch_id': str(channel_id), 'ch_name': str(channel_name)}}, 
-                                                                new=False, 
-                                                                upsert=False)
+            fields['ch_name'] = str(channel_name)
+        return Connector._set_fields(reminder_id, fields)
 
-        # upsert without channel name
-        else:
-            result = Connector.db.reminders.find_one_and_update({'_id': reminder_id}, 
-                                                            {'$set': {'ch_id': str(channel_id)}}, 
-                                                            new=False, 
-                                                            upsert=False)
-        
-            if not result:
-                result = Connector.db.intervals.find_one_and_update({'_id': reminder_id}, 
-                                                                    {'$set': {'ch_id': str(channel_id)}}, 
-                                                                    new=False, 
-                                                                    upsert=False)
-            
-        return (result is not None)
-        
-    
+
     @staticmethod
     def get_scoped_reminders(scope: Scope, sort_return=True):
         """request all reminders from the db

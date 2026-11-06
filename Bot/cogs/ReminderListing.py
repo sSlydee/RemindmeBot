@@ -1,16 +1,13 @@
-import asyncio
 import logging
 import math
-from enum import Enum
-import random
 from unidecode import unidecode
 from dateutil import tz
 
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 
 from lib.Connector import Connector
-from lib.Reminder import Reminder, IntervalReminder
+from lib.Reminder import Reminder
 import lib.input_parser
 
 import util.interaction
@@ -40,27 +37,6 @@ class ReminderListView(util.interaction.CustomView):
         return ReminderListing.get_reminder_list_eb(self.stm.reminders, self.stm.page, title_str, self.stm.tz_str, self.stm.scope.user_id)
 
     
-    def get_reminders_on_page(self, reminders, page):
-        """select the reminders which are
-           present on the selected page
-
-        Args:
-            reminders ([]): list of reminders
-            page (int): selected page
-
-        Returns:
-            []: list of reminders on page
-        """
-        
-        from_idx = page*9
-        # the reminders are selected with a:b syntax
-        # which is not inclusive for b
-        to_idx = (page*9) + 9
-        to_idx = min(to_idx, len(reminders))
-
-        return reminders[from_idx:to_idx]
-
-
     def page_count(self) -> int:
         return max(math.ceil(len(self.stm.reminders) / 9), 1)
 
@@ -76,7 +52,7 @@ class ReminderListView(util.interaction.CustomView):
     def update_dropdown(self, refresh=True):
         if refresh:
             self.refresh_reminders()
-        page_rems = self.get_reminders_on_page(self.stm.reminders, self.stm.page)
+        page_rems = ReminderListing.get_reminders_on_page(self.stm.reminders, self.stm.page)
 
         # delete old selects, also when the page is now empty
         for old_sel in [x for x in self.children if isinstance(x, discord.ui.Select)]:
@@ -137,7 +113,7 @@ class ReminderListView(util.interaction.CustomView):
 
         # do not update reminder list
         # otherwise the user selected reminder could be another one than the actual one
-        page_rems = self.get_reminders_on_page(self.stm.reminders, self.stm.page)
+        page_rems = ReminderListing.get_reminders_on_page(self.stm.reminders, self.stm.page)
         values = interaction.data.get('values') or []
 
         if not values or int(values[0]) >= len(page_rems):
@@ -208,7 +184,6 @@ class ReminderListing(commands.Cog):
         Returns:
             str: reminder list string
         """
-        out_str = 'Sorted by date\n\n'
 
         rows = []
         for i, r in enumerate(reminders):
