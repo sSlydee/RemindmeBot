@@ -1,4 +1,5 @@
 import logging
+import lib.timeutil as timeutil
 from typing import Union
 
 from datetime import datetime, timedelta
@@ -168,7 +169,7 @@ class ReminderCreation(commands.Cog):
         tz_str = Connector.get_timezone(instance_id)
         auto_del_action = Connector.get_auto_delete(instance_id)
 
-        utcnow = datetime.utcnow()
+        utcnow = timeutil.utcnow()
         remind_at, info = lib.input_parser.parse(period, utcnow, tz_str)
         rrule = None
 

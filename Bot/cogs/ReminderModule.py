@@ -1,9 +1,9 @@
 import math
+import lib.timeutil as timeutil
 import os
 import logging
 import traceback
 
-from datetime import datetime
 
 
 import discord
@@ -268,7 +268,7 @@ class ReminderModule(commands.Cog):
     @tasks.loop(seconds=45)
     @log_errors(log)
     async def check_pending_intervals(self):   
-        now = datetime.utcnow()
+        now = timeutil.utcnow()
         
         pending_intvls = Connector.get_pending_intervals(utc_timestamp(now))
 
@@ -288,7 +288,7 @@ class ReminderModule(commands.Cog):
                 t = (type(e), e, e.__traceback__)
                 log.error(''.join(traceback.format_exception(*t)))
 
-        self.last_loop = datetime.utcnow()
+        self.last_loop = timeutil.utcnow()
         sent_in = (self.last_loop-now).total_seconds()
         if sent_in > 1:
             log.debug(f'intervals sent in {sent_in}s')
@@ -297,7 +297,7 @@ class ReminderModule(commands.Cog):
     @tasks.loop(seconds=50)
     @log_errors(log)
     async def check_pending_reminders(self):
-        now = datetime.utcnow()
+        now = timeutil.utcnow()
 
         # delete each reminder only after it was handled:
         # a crash or restart while sending must not lose the pending ones
@@ -316,7 +316,7 @@ class ReminderModule(commands.Cog):
             Connector.delete_reminder(reminder._id)
 
 
-        sent_in = (datetime.utcnow()-now).total_seconds()
+        sent_in = (timeutil.utcnow()-now).total_seconds()
         if sent_in > 1:
             log.debug(f'reminders sent in {sent_in}s')
 

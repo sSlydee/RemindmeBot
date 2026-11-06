@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
+import lib.timeutil as timeutil
 from typing import Union
 
 import discord
@@ -194,7 +195,7 @@ class SnoozeView(CustomView):
         # this automatically converts intervals to reminders
         snoozed = Reminder(self.reminder._to_json())
 
-        utcnow = datetime.utcnow()
+        utcnow = timeutil.utcnow()
         snoozed._id = None
         snoozed.created_at = utcnow
         if not snoozed.msg.endswith(' (snoozed)'):

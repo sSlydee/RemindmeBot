@@ -1,4 +1,5 @@
 import re
+import lib.timeutil as timeutil
 from datetime import datetime, timedelta
 
 import dateutil.parser
@@ -372,7 +373,7 @@ def rrule_to_english(rrule, now=None):
     """
     
     if not now:
-        now = datetime.utcnow()
+        now = timeutil.utcnow()
 
     r = RecurringEvent(now_date=now, preferred_time_range=(0,12), parse_constants=_parse_consts)
     text = r.format(rrule)

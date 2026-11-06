@@ -1,29 +1,18 @@
 import discord # for reminder
-from datetime import datetime, timezone
 from dateutil import tz
 import dateutil.rrule as rr
 
 import logging
 
 import lib.input_parser
+import lib.timeutil as timeutil
+from lib.timeutil import utc_timestamp, utc_from_timestamp  # noqa: F401 (re-exported)
 import lib.Connector  # KEEP this syntax, circular import
 
 
 log = logging.getLogger('Remindme.Reminder')
 
 
-# The bot works with naive datetimes in UTC and stores them as unix timestamps.
-# datetime.timestamp()/fromtimestamp() on naive values use the *machine* timezone,
-# so always attach UTC explicitly: the stored values must not depend on the host.
-
-def utc_timestamp(naive_utc: datetime) -> float:
-    """unix timestamp of a naive UTC datetime"""
-    return naive_utc.replace(tzinfo=timezone.utc).timestamp()
-
-
-def utc_from_timestamp(timestamp: float) -> datetime:
-    """naive UTC datetime of a unix timestamp"""
-    return datetime.fromtimestamp(timestamp, timezone.utc).replace(tzinfo=None)
 
 
 class Reminder:
@@ -71,16 +60,16 @@ class Reminder:
         return self.at == other.at
 
     def __lt__(self, other):
-        return (self.at or datetime.utcnow()) < (other.at or datetime.utcnow())
+        return (self.at or timeutil.utcnow()) < (other.at or timeutil.utcnow())
 
     def __le__(self, other):
-        return (self.at or datetime.utcnow()) <= (other.at or datetime.utcnow())
+        return (self.at or timeutil.utcnow()) <= (other.at or timeutil.utcnow())
 
     def __gt__(self, other):
-        return (self.at or datetime.utcnow()) > (other.at or datetime.utcnow())
+        return (self.at or timeutil.utcnow()) > (other.at or timeutil.utcnow())
 
     def __ge__(self, other):
-        return (self.at or datetime.utcnow()) >= (other.at or datetime.utcnow())
+        return (self.at or timeutil.utcnow()) >= (other.at or timeutil.utcnow())
 
     def __ne__(self, other):
         # unequals allows None
@@ -128,7 +117,7 @@ class Reminder:
             return 'No future occurrence'
         
         if not now:
-            now = datetime.utcnow()  
+            now = timeutil.utcnow()  
             
             
         if use_timestamp:
@@ -236,7 +225,7 @@ class Reminder:
         """
 
         if not now:
-            now = datetime.utcnow()
+            now = timeutil.utcnow()
         
         if self.target == self.author:
             description = 'Reminding you '
@@ -389,7 +378,7 @@ class IntervalReminder(Reminder):
         """
 
         if not now:
-            now = datetime.utcnow()
+            now = timeutil.utcnow()
         
         if self.target == self.author:
             description = 'Reminding you '

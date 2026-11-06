@@ -1,4 +1,5 @@
 from datetime import datetime
+import lib.timeutil as timeutil
 from dateutil import tz
 import dateutil.rrule as rr
 
@@ -115,7 +116,7 @@ def add_rules(reminder, rrule=None, exrule=None, rdate=None, exdate=None) -> Int
         reminder.exdates.append(exdate)
 
 
-    reminder.at = reminder.next_trigger(datetime.utcnow())
+    reminder.at = reminder.next_trigger(timeutil.utcnow())
     Connector.update_interval_rules(reminder)
     Connector.update_interval_at(reminder)
 
@@ -125,13 +126,13 @@ def add_rules(reminder, rrule=None, exrule=None, rdate=None, exdate=None) -> Int
 
 def rm_rules(reminder: IntervalReminder, rule_idx=None):
 
-    utcnow = datetime.utcnow()
+    utcnow = timeutil.utcnow()
 
     if rule_idx is None:
         return reminder
 
     reminder.delete_rule_idx(rule_idx)
-    reminder.at = reminder.next_trigger(datetime.utcnow())
+    reminder.at = reminder.next_trigger(timeutil.utcnow())
 
     rules_cnt = reminder.get_rule_cnt()
 

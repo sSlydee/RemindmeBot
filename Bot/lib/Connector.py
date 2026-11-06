@@ -319,7 +319,7 @@ class Connector:
             rems = []
 
         if sort_return:
-            #rems = sorted(rems, key=lambda r: r.at or datetime.utcnow())
+            #rems = sorted(rems, key=lambda r: r.at or timeutil.utcnow())
             rems = sorted(rems)
         
         return rems

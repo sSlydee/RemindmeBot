@@ -92,8 +92,7 @@ class IntervalTimezoneTest(unittest.TestCase):
         at, _ = p.parse('8 nov 7:00', now, 'Europe/Paris')
         interval = self._set_daily(self._one_shot(at))
 
-        with patch('lib.ReminderRepeater.datetime') as fake_dt:
-            fake_dt.utcnow.return_value = now
+        with patch('lib.timeutil.utcnow', return_value=now):
             one_shot = repeater.rm_rules(interval, rule_idx=0)
 
         self.assertIs(type(one_shot), Reminder)

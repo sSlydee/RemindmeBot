@@ -476,7 +476,7 @@ class Help(discord.Cog):
 
         created_at = discord.utils.snowflake_time(ctx.id)
 
-        response_time = (datetime.utcnow().replace(tzinfo=tz.UTC)-created_at)
+        response_time = (datetime.now(tz.UTC)-created_at)
         response_ms = int(response_time.total_seconds()*1000)
         
         # try-catch is the easiest approach for this problem
@@ -557,7 +557,7 @@ class Help(discord.Cog):
         eb.add_field(name='Library Latency*', value=f'{response_ms} ms', inline=True)
 
 
-        test_time = (datetime.utcnow().replace(tzinfo=tz.UTC)-created_at)
+        test_time = (datetime.now(tz.UTC)-created_at)
         test_ms = int(test_time.total_seconds()*1000)
         eb.add_field(name='Self-Test Duration*', value=f'{test_ms} ms', inline=False)
 

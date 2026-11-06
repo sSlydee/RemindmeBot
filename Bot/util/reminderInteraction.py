@@ -1,4 +1,5 @@
 import discord
+import lib.timeutil as timeutil
 from enum import Enum
 from datetime import datetime, timedelta
 from dateutil import tz
@@ -357,7 +358,7 @@ class EditModal(discord.ui.Modal):
             # only parse the date when the user changed it,
             # the pre-filled value is the current due date
             if new_at and new_at != self.prefilled_at:
-                utcnow = datetime.utcnow()
+                utcnow = timeutil.utcnow()
                 # same parser as /remindme: ISO timestamps (without offset: server timezone),
                 # relative times and natural dates
                 parsed_at, parse_info = lib.input_parser.parse(new_at, utcnow, self.tz)
@@ -482,7 +483,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
         action_str = 'single date' if mode==RuleMode.DATE_ADD else 'date exception'
 
-        utcnow = datetime.utcnow()
+        utcnow = timeutil.utcnow()
         date, info = lib.input_parser.parse(user_input, utcnow, self.stm.tz_str)
         interval = date-utcnow if date else utcnow # set to error if not defined
 
