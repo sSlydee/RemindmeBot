@@ -252,6 +252,17 @@ class RuleModal(discord.ui.Modal):
 
 
 
+def optional_input(**kwargs) -> discord.ui.InputText:
+    """an InputText the user may leave empty
+
+    py-cord 2.7 turns required=False into None in the payload, which
+    Discord reads as required (fixed in py-cord 2.8). Set it afterwards.
+    """
+    item = discord.ui.InputText(**kwargs)
+    item.required = False
+    return item
+
+
 class EditModal(discord.ui.Modal):
     def __init__(self, reminder: Reminder, tz_str:str, custom_callback, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -263,11 +274,10 @@ class EditModal(discord.ui.Modal):
 
 
         self.add_item(
-            discord.ui.InputText(
+            optional_input(
                 label='Title',
                 placeholder='(optional)',
                 value=self.reminder.title,
-                required=False,
                 style=discord.InputTextStyle.singleline
             )
         )
@@ -278,10 +288,9 @@ class EditModal(discord.ui.Modal):
                 style=discord.InputTextStyle.paragraph
             )
         )
-        self.add_item(discord.ui.InputText(
+        self.add_item(optional_input(
             label='Image Url (optional)',
             value=self.reminder.img_url,
-            required=False,
             style=discord.InputTextStyle.singleline
         ))
 
@@ -298,10 +307,9 @@ class EditModal(discord.ui.Modal):
                 )
             )
         else:
-            self.add_item(discord.ui.InputText(
+            self.add_item(optional_input(
                 label='Remind at',
                 placeholder='Edit Intervals with `/reminder_list`',
-                required=False,
                 style=discord.InputTextStyle.singleline
                 )
             )
