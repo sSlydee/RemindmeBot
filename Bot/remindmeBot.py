@@ -34,6 +34,15 @@ _stderr_handler.setFormatter(_formatter)
 logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _stderr_handler]) # general 3rd party
 logging.getLogger('discord').setLevel(logging.WARNING) # reduce warning for discord lib
 
+
+class _NoVoiceWarning(logging.Filter):
+    """py-cord warns at every start that the voice libraries are missing:
+       this bot never joins voice channels, so they are not installed"""
+    def filter(self, record):
+        return 'voice will NOT be supported' not in record.getMessage()
+
+logging.getLogger('discord.utils').addFilter(_NoVoiceWarning())
+
 log = logging.getLogger('Remindme')
 log.setLevel(LOG_LEVEL) # own code, all 'Remindme.*' loggers inherit it
 

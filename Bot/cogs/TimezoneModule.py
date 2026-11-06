@@ -3,7 +3,7 @@ import logging
 
 import difflib
 from dateutil import tz
-from dateutil.zoneinfo import getzoneinfofile_stream, ZoneInfoFile
+import zoneinfo
 from pytz import common_timezones as pytz_common_timezones
 
 import discord
@@ -24,7 +24,8 @@ class TimezoneModule(discord.Cog):
     # Statics
     #################
 
-    timezones = list(ZoneInfoFile(getzoneinfofile_stream()).zones.keys())
+    # IANA names from the system tz database (or the tzdata package)
+    timezones = sorted(z for z in zoneinfo.available_timezones() if z != 'localtime')
 
     
     def __init__(self, client):
@@ -79,7 +80,7 @@ class TimezoneModule(discord.Cog):
 
         tz_obj = tz.gettz(value)
         if not tz_obj:
-            all_zones = list(ZoneInfoFile(getzoneinfofile_stream()).zones.keys())
+            all_zones = TimezoneModule.timezones
 
             closest_tz = difflib.get_close_matches(value, all_zones, n=5)
             if not closest_tz:

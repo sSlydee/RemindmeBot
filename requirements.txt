@@ -1,18 +1,14 @@
 pytz
 tzdata
-python-dateutil<3  # 3.x removed getzoneinfofile_stream, used by TimezoneModule
+python-dateutil
 pymongo
-requests
 Unidecode
-recurrent
 parsedatetime
 validators
 orjson
-# libs for pycord sppedup
-PyNaCl
+# optional speedups used by py-cord
 aiodns
 brotli
-cchardet==2.2.0a2
 msgspec
 # pycord
-py-cord==2.7.2
+py-cord==2.8.1
