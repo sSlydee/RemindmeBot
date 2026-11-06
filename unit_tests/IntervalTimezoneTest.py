@@ -20,7 +20,6 @@ class IntervalTimezoneTest(unittest.TestCase):
     def setUp(self):
         connector = lib.Connector.Connector
         patches = [
-            patch.object(connector, 'is_legacy_interval', return_value=False),
             patch.object(connector, 'get_timezone', return_value='Europe/Paris'),
             patch.object(connector, 'add_interval', return_value='new-id'),
             patch.object(connector, 'add_reminder', return_value='new-id'),

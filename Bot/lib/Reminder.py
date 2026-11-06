@@ -552,7 +552,6 @@ class IntervalReminder(Reminder):
             return True
 
         instance_id = self.g_id if self.g_id else self.author
-        legacy_mode = lib.Connector.Connector.is_legacy_interval(instance_id)
 
         ruleset = rr.rruleset()
 
@@ -578,28 +577,21 @@ class IntervalReminder(Reminder):
             ruleset.exdate(date)
 
 
-        if not legacy_mode:
-            # the local time must be used
-            # to determin the next event
-            if not tz_str:
-                tz_str = lib.Connector.Connector.get_timezone(instance_id)
+        # the rules are in the local time of the server (or user, in DMs):
+        # find the next event in local time, then convert it back to UTC
+        if not tz_str:
+            tz_str = lib.Connector.Connector.get_timezone(instance_id)
 
-            local_now = utcnow.replace(tzinfo=tz.UTC)
-            local_now = local_now.astimezone(tz.gettz(tz_str))
-            local_now = local_now.replace(tzinfo=None)
-            
+        local_now = utcnow.replace(tzinfo=tz.UTC)
+        local_now = local_now.astimezone(tz.gettz(tz_str))
+        local_now = local_now.replace(tzinfo=None)
 
-            next_trigger = ruleset.after(local_now)
-            
-            if next_trigger:
-                # back to UTC, for DB queries
-                next_trigger = next_trigger.replace(tzinfo=tz.gettz(tz_str))
-                next_trigger = next_trigger.astimezone(tz.UTC)
-                next_trigger = next_trigger.replace(tzinfo=None)
-            
-        else:
-            next_trigger = ruleset.after(utcnow)
+        next_trigger = ruleset.after(local_now)
 
-    
-            
+        if next_trigger:
+            # back to UTC, for DB queries
+            next_trigger = next_trigger.replace(tzinfo=tz.gettz(tz_str))
+            next_trigger = next_trigger.astimezone(tz.UTC)
+            next_trigger = next_trigger.replace(tzinfo=None)
+
         return next_trigger

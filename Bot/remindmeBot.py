@@ -178,10 +178,6 @@ async def on_guild_remove(guild):
 
 @bot.event
 async def on_guild_join(guild):
-
-    # new guilds do not use the legacy mode
-    Connector.set_legacy_interval(guild.id, False)
-
     log.info(f'added to guild {guild.id} (total count: {len(bot.guilds)})')
 
 # #############

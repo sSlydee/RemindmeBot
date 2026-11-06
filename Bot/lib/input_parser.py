@@ -400,8 +400,7 @@ def rrule_normalize(rrule_str, dtstart, instance_id=None):
 
     Args:
         rule_str ([type]): [description]
-        dtstart ([type]): start date of repeat, should be local date for non-legacy
-                                                and UTC for legacy
+        dtstart ([type]): start date of repeat, naive local date of the server/user
 
     Returns:
         (rule, str): normalized rule (to utc) None on failure, error string

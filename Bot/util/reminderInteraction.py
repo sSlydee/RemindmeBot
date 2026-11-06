@@ -424,7 +424,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         action_str = 'Rrule' if mode==RuleMode.RRULE_ADD else 'Rrule exception'
         action_modifier = '*not*' if mode==RuleMode.RRULE_EX_ADD else ''
      
-        # the rule frame is the server's local time (unless legacy intervals are used)
+        # the rule frame is the local time of the server (of the user, in DMs)
         if isinstance(self.reminder, IntervalReminder):
             dtstart = self.reminder.first_at
         else:
@@ -519,7 +519,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             await view.wait()
 
             if view.value:
-                # rule dates live in the rule frame (local time, unless legacy intervals are used)
+                # rule dates live in the rule frame (local time of the server or user)
                 rule_date = lib.ReminderRepeater.utc_to_rule_frame(date, lib.ReminderRepeater.instance_id_of(self.reminder))
                 if mode == RuleMode.DATE_ADD:
                     self.reminder = lib.ReminderRepeater.add_rules(self.reminder, rdate=rule_date)

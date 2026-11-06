@@ -143,48 +143,6 @@ class Connector:
             return Connector.CommunityMode[rem_json.get('community', Connector.CommunityMode.DISABLED.name)]
 
 
-    @staticmethod
-    def get_legacy_interval_count():
-        return Connector.db.settings.count_documents({'legacy_interval': True})
-
-
-    @staticmethod
-    def set_legacy_interval(instance_id: int, mode: bool):
-        Connector.db.settings.find_one_and_update({'g_id': str(instance_id)}, {'$set': {'legacy_interval': mode}}, new=False, upsert=True)
-
-
-    @staticmethod
-    def is_legacy_interval(instance_id: int) -> bool:
-        """check if the instance uses legacy intervals
-           if no entry exists, legacy is assumed for backwards compatibility
-        """
-        exp_json = Connector.db.settings.find_one({'g_id': str(instance_id)}, {'legacy_interval': 1})
-        
-        if not exp_json:
-            return True
-        else:
-            return exp_json.get('legacy_interval', True)
-
-
-    @staticmethod
-    def get_experimental_count():
-        return Connector.db.settings.count_documents({'experimental': True})
-
-
-    @staticmethod
-    def set_experimental(instance_id: int, mode: bool):
-        Connector.db.settings.find_one_and_update({'g_id': str(instance_id)}, {'$set': {'experimental': mode}}, new=False, upsert=True)
-    
-    @staticmethod
-    def is_experimental(instance_id: int):
-        
-        exp_json = Connector.db.settings.find_one({'g_id': str(instance_id)}, {'experimental': 1})
-        
-        if not exp_json:
-            return False
-        else:
-            return exp_json.get('experimental', False)
-
 
     @staticmethod
     def get_community_count():

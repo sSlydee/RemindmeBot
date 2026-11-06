@@ -188,7 +188,6 @@ class ReminderCreation(commands.Cog):
 
         tz_str = Connector.get_timezone(instance_id)
         auto_del_action = Connector.get_auto_delete(instance_id)
-        is_legacy = Connector.is_legacy_interval(instance_id)
 
         utcnow = datetime.utcnow()
         remind_at, info = lib.input_parser.parse(period, utcnow, tz_str)
@@ -228,10 +227,8 @@ class ReminderCreation(commands.Cog):
 
         elif isinstance(remind_at, str):
 
-            if is_legacy:
-                dtstart = utcnow
-            else:
-                dtstart = utcnow.replace(tzinfo=tz.UTC).astimezone(tz.gettz(tz_str)).replace(tzinfo=None)
+            # interval rules live in the local time of the server/user
+            dtstart = utcnow.replace(tzinfo=tz.UTC).astimezone(tz.gettz(tz_str)).replace(tzinfo=None)
 
             rrule, info = lib.input_parser.rrule_normalize(remind_at, dtstart=dtstart, instance_id=instance_id)
             if not rrule:

@@ -40,7 +40,6 @@ class MenuDropdown(discord.ui.Select):
         opts = [
             discord.SelectOption(label='Basic Page', emoji='🌐', description='Holds most important settings', value='0', default=(page_num==0)),
             discord.SelectOption(label='Community Page', emoji='👪', description='Show community related settings', value='1', default=(page_num==1)),
-            discord.SelectOption(label='Experimental Page', emoji='🥼', description='Show new/test settings', value='2', default=(page_num==2)),
         ]
         self.options = opts
 
@@ -217,73 +216,6 @@ class SettingsPageTemplate(util.interaction.CustomView):
 
 
 
-class ExperimentalSettings(SettingsPageTemplate):
-    def __init__(self, scope, author: Union[discord.User, discord.Member], guild_roles: list[discord.Role], page_callback, *args, **kwargs):
-        super().__init__(scope=scope, page=2, page_callback=page_callback, dropdown_row=4, *args, **kwargs)
-        self.update_ui_elements()
-
-        if isinstance(author, discord.Member):
-            author_roles = author.roles
-        else:
-            # discord removed role attr from Users (DM) entirely
-            author_roles = []
-
-        action = CommunityAction(settings=True)
-        self.forbidden = not lib.permissions.check_user_permission(self.scope.instance_id, author_roles, required_perms=action, member=author)
-
-        if scope.is_private or (self.forbidden and not author.guild_permissions.administrator):
-            self.disable_all()
-            self.dd.disabled = False
-
-
-    def update_ui_elements(self):
-        is_exp = Connector.is_experimental(self.scope.instance_id)
-
-        if is_exp:
-            self.exp_enabled.style=discord.ButtonStyle.success
-            self.exp_enabled.disabled=True
-            self.exp_disabled.style=discord.ButtonStyle.secondary
-            self.exp_disabled.disabled=False
-        else:
-            self.exp_enabled.style=discord.ButtonStyle.secondary
-            self.exp_enabled.disabled=False
-            self.exp_disabled.style=discord.ButtonStyle.success
-            self.exp_disabled.disabled=True
-
-
-    def get_embed(self) -> discord.Embed:
-        eb = discord.Embed(title='Remindme Experimental-Settings',
-                description='Server Managers can enable experimental settings.\n'\
-                            'These are new features which are not yet ready to be deployed for everyone.\n'\
-                            'Be aware that the Bot might not be as reliable with these turned on.')
-        
-        if self.forbidden:
-            eb.color = Consts.col_err
-            eb.description = 'You do not have permissions to modify the settings of this server. Only moderators (or members with `Manage Server` when community mode is disabled) can do so.'
-
-        return eb
-    
-
-    async def send_update_ui(self, interaction: discord.Interaction):
-        self.update_ui_elements()
-        await interaction.response.edit_message(view=self)
-
-    @discord.ui.button(label='Experimental Features', style=discord.ButtonStyle.primary, row=0)
-    async def experimental_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        # label only: acknowledge, or Discord reports that the bot did not respond
-        await interaction.response.defer()
-
-    @discord.ui.button(label='Disabled', style=discord.ButtonStyle.secondary, row=0)
-    async def exp_disabled(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_experimental(self.scope.instance_id, False)
-        await self.send_update_ui(interaction)
-
-    @discord.ui.button(label='Enabled', style=discord.ButtonStyle.secondary, row=0)
-    async def exp_enabled(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_experimental(self.scope.instance_id, True)
-        await self.send_update_ui(interaction)
-
-
 class RoleDropDown(discord.ui.Select):
     def __init__(self, scope: Connector.Scope, author: Union[discord.User, discord.Member], guild_roles: list[discord.Role], mod_roles: list[int], *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -442,7 +374,6 @@ class BaseSettings(SettingsPageTemplate):
         self.server_tz_val.label = Connector.get_timezone(self.scope.instance_id)
         rem_type = Connector.get_reminder_type(self.scope.instance_id)
         del_type = Connector.get_auto_delete(self.scope.instance_id)
-        parse_legacy = Connector.is_legacy_interval(self.scope.instance_id)
 
         
 
@@ -504,17 +435,6 @@ class BaseSettings(SettingsPageTemplate):
             self.del_timeout.disabled=False
             self.del_hidden.style=discord.ButtonStyle.success
             self.del_hidden.disabled=True
-
-        if parse_legacy:
-            self.parse_legacy.style=discord.ButtonStyle.success
-            self.parse_legacy.disabled=True
-            self.parse_local.style=discord.ButtonStyle.secondary
-            self.parse_local.disabled=False
-        else:
-            self.parse_legacy.style=discord.ButtonStyle.secondary
-            self.parse_legacy.disabled=False
-            self.parse_local.style=discord.ButtonStyle.success
-            self.parse_local.disabled=True
 
 
     def get_embed(self) -> discord.Embed:
@@ -594,21 +514,6 @@ class BaseSettings(SettingsPageTemplate):
         await self.send_update_ui(interaction)
 
 
-    @discord.ui.button(label='Interval Parsing', style=discord.ButtonStyle.primary, row=3)
-    async def parsing_style(self, button: discord.ui.Button, interaction: discord.Interaction):
-        # label only: acknowledge, or Discord reports that the bot did not respond
-        await interaction.response.defer()
-
-    @discord.ui.button(label='Use local Timezone', style=discord.ButtonStyle.secondary, row=3)
-    async def parse_local(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_legacy_interval(self.scope.instance_id, False)
-        await self.send_update_ui(interaction)
-
-    @discord.ui.button(label='Legacy (always UTC)', style=discord.ButtonStyle.secondary, row=3)
-    async def parse_legacy(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_legacy_interval(self.scope.instance_id, True)
-        await self.send_update_ui(interaction)
-
 
 class SettingsManager():
     def __init__(self, ctx: discord.ApplicationContext, scope, page, *args, **kwargs):
@@ -625,7 +530,6 @@ class SettingsManager():
         lut = {
             0: BaseSettings,
             1: CommunitySettingsView,
-            2: ExperimentalSettings
         }
         if page in lut:
             return lut[page]

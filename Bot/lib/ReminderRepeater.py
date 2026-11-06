@@ -11,7 +11,7 @@ from lib.Reminder import Reminder, IntervalReminder
 #====================
 
 # Interval rules (DTSTART, first_at, rdates, exdates) are naive datetimes in
-# the server's local time, unless the server uses legacy (UTC) intervals.
+# the local time of the server (of the user, in DMs).
 # Reminder.at is always naive UTC. Convert at every boundary between the two.
 
 def instance_id_of(reminder):
@@ -20,7 +20,7 @@ def instance_id_of(reminder):
 
 def utc_to_rule_frame(utc_dt: datetime, instance_id) -> datetime:
     """convert a naive UTC datetime into the frame used by interval rules"""
-    if utc_dt is None or Connector.is_legacy_interval(instance_id):
+    if utc_dt is None:
         return utc_dt
     local_tz = tz.gettz(Connector.get_timezone(instance_id))
     return utc_dt.replace(tzinfo=tz.UTC).astimezone(local_tz).replace(tzinfo=None)
@@ -28,7 +28,7 @@ def utc_to_rule_frame(utc_dt: datetime, instance_id) -> datetime:
 
 def rule_frame_to_utc(rule_dt: datetime, instance_id) -> datetime:
     """convert a naive datetime of the interval rule frame back to naive UTC"""
-    if rule_dt is None or Connector.is_legacy_interval(instance_id):
+    if rule_dt is None:
         return rule_dt
     local_tz = tz.gettz(Connector.get_timezone(instance_id))
     return rule_dt.replace(tzinfo=local_tz).astimezone(tz.UTC).replace(tzinfo=None)

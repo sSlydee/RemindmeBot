@@ -467,8 +467,6 @@ class Help(discord.Cog):
     async def send_test_messages(self, ctx: discord.Interaction):
         
         instance_id = ctx.guild_id if ctx.guild_id else ctx.user.id
-        experimental = Connector.is_experimental(instance_id)
-        legacy = Connector.is_legacy_interval(instance_id)
         
         # create a report of the setup
         can_embed = False
@@ -553,9 +551,6 @@ class Help(discord.Cog):
         eb.add_field(name='Local Time', value=f'{local_time} (based on timezone settings)', inline=False)
 
 
-        eb.add_field(name='Legacy mode', value=legacy, inline=True)
-        eb.add_field(name='Experimental mode', value=experimental, inline=True)    
-        eb.add_field(name='\u200b', value='\u200b', inline=True)
 
 
         eb.add_field(name='Discord API Latency', value=f'{ping} ms', inline=True)
