@@ -217,7 +217,7 @@ class ReminderCreation(commands.Cog):
                     # not on negative intervals
                     out_str += ReminderCreation.REMIND_FORMAT_HELP
                 elif interval < timedelta(hours=0):
-                    out_str += 'Make sure your server is using the correct timezone `/settings timezone`'
+                    out_str += 'Make sure your server is using the correct timezone `/timezone`'
 
                 embed = discord.Embed(title='Failed to create the reminder', color=0xff0000, description=out_str)
                 embed.set_footer(text=ReminderCreation.HELP_FOOTER)

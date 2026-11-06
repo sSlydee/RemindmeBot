@@ -136,7 +136,8 @@ class CommunitySubSettings(util.interaction.CustomView):
 
     @discord.ui.button(label='Mods Only Mode', style=discord.ButtonStyle.primary, row=0)
     async def mods_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        pass # do nothing when this one is pressed
+        # label only: acknowledge, or Discord reports that the bot did not respond
+        await interaction.response.defer()
 
     @discord.ui.button(label='Disabled', style=discord.ButtonStyle.secondary, row=0)
     async def mod_disabled(self, button: discord.ui.Button, interaction: discord.Interaction):
@@ -152,7 +153,8 @@ class CommunitySubSettings(util.interaction.CustomView):
 
     @discord.ui.button(label='Repeating Reminders', style=discord.ButtonStyle.primary, row=1)
     async def repeating_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        pass # do nothing when this one is pressed
+        # label only: acknowledge, or Discord reports that the bot did not respond
+        await interaction.response.defer()
 
     @discord.ui.button(label='Everyone', style=discord.ButtonStyle.secondary, row=1)
     async def repeat_everyone(self, button: discord.ui.Button, interaction: discord.Interaction):
@@ -168,7 +170,8 @@ class CommunitySubSettings(util.interaction.CustomView):
 
     @discord.ui.button(label='Mention @everyone', style=discord.ButtonStyle.primary, row=2)
     async def mention_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        pass # do nothing when this one is pressed
+        # label only: acknowledge, or Discord reports that the bot did not respond
+        await interaction.response.defer()
     @discord.ui.button(label='Everyone', style=discord.ButtonStyle.secondary, row=2)
     async def mention_everyone(self, button: discord.ui.Button, interaction: discord.Interaction):
         Connector.set_community_setting(self.scope.instance_id, 'restrict_everyone', False)
@@ -183,7 +186,8 @@ class CommunitySubSettings(util.interaction.CustomView):
     
     @discord.ui.button(label='Remind other users', style=discord.ButtonStyle.primary, row=3)
     async def foreign_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        pass # do nothing when this one is pressed
+        # label only: acknowledge, or Discord reports that the bot did not respond
+        await interaction.response.defer()
 
     @discord.ui.button(label='Everyone', style=discord.ButtonStyle.secondary, row=3)
     async def foreign_everyone(self, button: discord.ui.Button, interaction: discord.Interaction):
@@ -267,7 +271,8 @@ class ExperimentalSettings(SettingsPageTemplate):
 
     @discord.ui.button(label='Experimental Features', style=discord.ButtonStyle.primary, row=0)
     async def experimental_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        pass # do nothing when this one is pressed
+        # label only: acknowledge, or Discord reports that the bot did not respond
+        await interaction.response.defer()
 
     @discord.ui.button(label='Disabled', style=discord.ButtonStyle.secondary, row=0)
     async def exp_disabled(self, button: discord.ui.Button, interaction: discord.Interaction):
@@ -376,7 +381,8 @@ class CommunitySettingsView(SettingsPageTemplate):
 
     @discord.ui.button(label='Community Mode', style=discord.ButtonStyle.primary, row=0)
     async def community_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        pass # do nothing when this one is pressed
+        # label only: acknowledge, or Discord reports that the bot did not respond
+        await interaction.response.defer()
 
     @discord.ui.button(label='Disabled', style=discord.ButtonStyle.secondary, row=0)
     async def mode_disablde(self, button: discord.ui.Button, interaction: discord.Interaction):
@@ -405,7 +411,8 @@ class CommunitySettingsView(SettingsPageTemplate):
 
     @discord.ui.button(label='Moderators:', style=discord.ButtonStyle.secondary, row=1)
     async def mod_placeholder_btn(self, button: discord.ui.Button, interaction: discord.Interaction):
-        pass # do nothing
+        # label only: acknowledge, or Discord reports that the bot did not respond
+        await interaction.response.defer()
 
 
 
@@ -528,7 +535,8 @@ class BaseSettings(SettingsPageTemplate):
     
     @discord.ui.button(label='Server Timezone', style=discord.ButtonStyle.primary, row=0)
     async def server_tz(self, button: discord.ui.Button, interaction: discord.Interaction):
-        pass # do nothing when this one is pressed
+        # same as the value button: show the current timezone
+        await self.server_tz_val.callback(interaction)
 
     @discord.ui.button(label='UTC', style=discord.ButtonStyle.secondary, row=0)
     async def server_tz_val(self, button: discord.ui.Button, interaction: discord.Interaction):
@@ -539,7 +547,8 @@ class BaseSettings(SettingsPageTemplate):
 
     @discord.ui.button(label='Preferred Reminder Style', style=discord.ButtonStyle.primary, row=1)
     async def reminder_style(self, button: discord.ui.Button, interaction: discord.Interaction):
-        pass # do nothing when this one is pressed
+        # label only: acknowledge, or Discord reports that the bot did not respond
+        await interaction.response.defer()
     @discord.ui.button(label='Hybrid Reminders', style=discord.ButtonStyle.secondary, row=1)
     async def style_hybrid(self, button: discord.ui.Button, interaction: discord.Interaction):
         Connector.set_reminder_type(self.scope.instance_id, Connector.ReminderType.HYBRID)
@@ -563,7 +572,8 @@ class BaseSettings(SettingsPageTemplate):
 
     @discord.ui.button(label='Delete Creation Style', style=discord.ButtonStyle.primary, row=2)
     async def delete_style(self, button: discord.ui.Button, interaction: discord.Interaction):
-        pass # do nothing when this one is pressed
+        # label only: acknowledge, or Discord reports that the bot did not respond
+        await interaction.response.defer()
 
     @discord.ui.button(label='Delete after Timeout', style=discord.ButtonStyle.secondary, row=2)
     async def del_timeout(self, button: discord.ui.Button, interaction: discord.Interaction):
@@ -583,7 +593,8 @@ class BaseSettings(SettingsPageTemplate):
 
     @discord.ui.button(label='Interval Parsing', style=discord.ButtonStyle.primary, row=3)
     async def parsing_style(self, button: discord.ui.Button, interaction: discord.Interaction):
-        pass # do nothing when this one is pressed
+        # label only: acknowledge, or Discord reports that the bot did not respond
+        await interaction.response.defer()
 
     @discord.ui.button(label='Use local Timezone', style=discord.ButtonStyle.secondary, row=3)
     async def parse_local(self, button: discord.ui.Button, interaction: discord.Interaction):
@@ -686,7 +697,7 @@ class SettingsModule(commands.Cog):
                         color=col,
                         description=f'The timezone is set to `{name}` (`UTC{offset}`)\n'\
                                     f'This corresponds to a local time of `{local_time}`\n'\
-                                    f'Use `/settings timezone` to edit this value')
+                                    f'Use `/timezone` to edit this value')
 
         return eb
 
