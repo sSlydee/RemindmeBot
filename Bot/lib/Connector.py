@@ -54,7 +54,13 @@ class Connector:
         uname = os.getenv('MONGO_ROOT_USER')
         pw = os.getenv('MONGO_ROOT_PASS')
 
-        Connector.client = MongoClient(host=host, username=uname, password=pw, port=port)
+        # pymongo calls block the event loop (and every Discord interaction) while they wait.
+        # The defaults wait up to 30 s for an unreachable server; fail fast instead,
+        # the task loops retry on their next iteration
+        Connector.client = MongoClient(host=host, username=uname, password=pw, port=port,
+                                       serverSelectionTimeoutMS=5000,
+                                       connectTimeoutMS=5000,
+                                       socketTimeoutMS=15000)
         Connector.db = Connector.client.reminderBot
 
 
