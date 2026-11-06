@@ -20,354 +20,21 @@ from util.consts import Consts
 import lib.permissions
 import util.interaction
 from lib.Connector import Connector
-from lib.CommunitySettings import CommunitySettings, CommunityAction
 
 
 log = logging.getLogger('Remindme.Settings')
 
-class MenuDropdown(discord.ui.Select):
-    def __init__(self, page_num: int, page_switch_callback, *args, **kwargs):
+class SettingsView(util.interaction.CustomView):
+    def __init__(self, scope: Connector.Scope, author: Union[discord.User, discord.Member], *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        self.page_callback=page_switch_callback
-        self.placeholder='Select a Menu page'
-        self.min_values=1
-        self.max_values=1
-
-        self.page = page_num
-        self.next_page = page_num
-
-        opts = [
-            discord.SelectOption(label='Basic Page', emoji='🌐', description='Holds most important settings', value='0', default=(page_num==0)),
-            discord.SelectOption(label='Community Page', emoji='👪', description='Show community related settings', value='1', default=(page_num==1)),
-        ]
-        self.options = opts
-
-
-    async def callback(self, interaction: discord.Interaction):
-        if self.values:
-            self.next_page = int(self.values[0])
-            await self.page_callback(interaction)
-
-
-class CommunitySubSettings(util.interaction.CustomView):
-    def __init__(self, scope: Connector.Scope, roles=[], *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.scope = scope
-        self.update_ui_elements()
-        
-
-
-    def update_ui_elements(self):
-        comm_settings = Connector.get_community_settings(self.scope.instance_id)
-
-
-        if comm_settings.restrict_repeating:
-            self.repeat_everyone.style = discord.ButtonStyle.secondary
-            self.repeat_everyone.disabled = False
-            self.repeat_mods.style = discord.ButtonStyle.success
-            self.repeat_mods.disabled = True
-        else:
-            self.repeat_everyone.style = discord.ButtonStyle.success
-            self.repeat_everyone.disabled = True
-            self.repeat_mods.style = discord.ButtonStyle.secondary
-            self.repeat_mods.disabled = False
-
-        if comm_settings.restrict_everyone:
-            self.mention_everyone.style = discord.ButtonStyle.secondary
-            self.mention_everyone.disabled = False
-            self.mention_mods.style = discord.ButtonStyle.success
-            self.mention_mods.disabled = True
-        else:
-            self.mention_everyone.style = discord.ButtonStyle.success
-            self.mention_everyone.disabled = True
-            self.mention_mods.style = discord.ButtonStyle.secondary
-            self.mention_mods.disabled = False
-
-        if comm_settings.restrict_foreign:
-            self.foreign_everyone.style = discord.ButtonStyle.secondary
-            self.foreign_everyone.disabled = False
-            self.foreign_mods.style = discord.ButtonStyle.success
-            self.foreign_mods.disabled = True
-        else:
-            self.foreign_everyone.style = discord.ButtonStyle.success
-            self.foreign_everyone.disabled = True
-            self.foreign_mods.style = discord.ButtonStyle.secondary
-            self.foreign_mods.disabled = False
-
-
-        if comm_settings.mods_only:
-            # force all buttons to off for community mode
-            # colors are already set from above
-            self.repeat_everyone.disabled=True
-            self.repeat_mods.disabled=True
-            self.mention_everyone.disabled=True
-            self.mention_mods.disabled=True
-            self.foreign_everyone.disabled=True
-            self.foreign_mods.disabled=True
-
-            # mod buttons
-            self.mod_enabled.style=discord.ButtonStyle.success
-            self.mod_enabled.disabled=True
-            self.mod_disabled.style=discord.ButtonStyle.secondary
-            self.mod_disabled.disabled=False
-        else:
-            # mod buttons
-            self.mod_enabled.style=discord.ButtonStyle.secondary
-            self.mod_enabled.disabled=False
-            self.mod_disabled.style=discord.ButtonStyle.success
-            self.mod_disabled.disabled=True
-
-
-    def get_embed(self) -> discord.Embed:
-        eb = discord.Embed(title='Remindme Community-Settings',
-                description='This page allows moderators to restrict certain features to moderators.\n'\
-                            'In "Mods-Only" mode, the bot is only usable by moderators')
-        return eb
-    
-
-    async def send_update_ui(self, interaction: discord.Interaction):
-        self.update_ui_elements()
-        await interaction.response.edit_message(view=self)
-
-
-
-    @discord.ui.button(label='Mods Only Mode', style=discord.ButtonStyle.primary, row=0)
-    async def mods_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        # label only: acknowledge, or Discord reports that the bot did not respond
-        await interaction.response.defer()
-
-    @discord.ui.button(label='Disabled', style=discord.ButtonStyle.secondary, row=0)
-    async def mod_disabled(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_community_setting(self.scope.instance_id, 'mods_only', False)
-        await self.send_update_ui(interaction)
-
-    @discord.ui.button(label='Enabled', style=discord.ButtonStyle.secondary, row=0)
-    async def mod_enabled(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_community_settings(self.scope.instance_id, CommunitySettings.full_restricted())
-        await self.send_update_ui(interaction)
-
-
-
-    @discord.ui.button(label='Repeating Reminders', style=discord.ButtonStyle.primary, row=1)
-    async def repeating_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        # label only: acknowledge, or Discord reports that the bot did not respond
-        await interaction.response.defer()
-
-    @discord.ui.button(label='Everyone', style=discord.ButtonStyle.secondary, row=1)
-    async def repeat_everyone(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_community_setting(self.scope.instance_id, 'restrict_repeating', False)
-        await self.send_update_ui(interaction)
-
-    @discord.ui.button(label='Mods Only', style=discord.ButtonStyle.secondary, row=1)
-    async def repeat_mods(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_community_setting(self.scope.instance_id, 'restrict_repeating', True)
-        await self.send_update_ui(interaction)
-
-
-
-    @discord.ui.button(label='Mention @everyone', style=discord.ButtonStyle.primary, row=2)
-    async def mention_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        # label only: acknowledge, or Discord reports that the bot did not respond
-        await interaction.response.defer()
-    @discord.ui.button(label='Everyone', style=discord.ButtonStyle.secondary, row=2)
-    async def mention_everyone(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_community_setting(self.scope.instance_id, 'restrict_everyone', False)
-        await self.send_update_ui(interaction)
-
-    @discord.ui.button(label='Mods Only', style=discord.ButtonStyle.secondary, row=2)
-    async def mention_mods(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_community_setting(self.scope.instance_id, 'restrict_everyone', True)
-        await self.send_update_ui(interaction)
-
-
-    
-    @discord.ui.button(label='Remind other users', style=discord.ButtonStyle.primary, row=3)
-    async def foreign_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        # label only: acknowledge, or Discord reports that the bot did not respond
-        await interaction.response.defer()
-
-    @discord.ui.button(label='Everyone', style=discord.ButtonStyle.secondary, row=3)
-    async def foreign_everyone(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_community_setting(self.scope.instance_id, 'restrict_foreign', False)
-        await self.send_update_ui(interaction)
-
-    @discord.ui.button(label='Mods Only', style=discord.ButtonStyle.secondary, row=3)
-    async def foreign_mods(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_community_setting(self.scope.instance_id, 'restrict_foreign', True)
-        await self.send_update_ui(interaction)
-
-
-    @discord.ui.button(label='Return', style=discord.ButtonStyle.secondary, row=4)
-    async def ret_btn(self, button: discord.ui.Button, interaction: discord.Interaction):
-        self.disable_all()
-        # await interaction.response.edit_message(view=self) # in case of timeout
-        self.open_interaction = interaction
-        self.stop()
-
-class SettingsPageTemplate(util.interaction.CustomView):
-    def __init__(self, scope, page, page_callback, dropdown_row=4, roles=[], *args, **kwargs):
-
-        super().__init__(*args, **kwargs)
-        self.scope:Connector.Scope = scope
-
-        self.dd = MenuDropdown(page_num=page, page_switch_callback=page_callback, row=dropdown_row)
-        self.add_item(self.dd)
-
-
-
-class RoleDropDown(discord.ui.Select):
-    def __init__(self, scope: Connector.Scope, author: Union[discord.User, discord.Member], guild_roles: list[discord.Role], mod_roles: list[int], *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.scope=scope
-        self.placeholder='Select the Moderator Role(s)'
-        
-        # only show the "highest" 25, never @everyone: it would make every member a moderator
-        self.guild_roles = [r for r in guild_roles[::-1] if not r.is_default()][:25]
-        self.author = author
-        self.mod_roles = mod_roles
-
-        opts = [
-            discord.SelectOption(label=r.name[:25], value=str(r.id), default=r.id in self.mod_roles) for r in self.guild_roles
-        ]
-        self.options = opts
-
-        self.min_values=0
-        self.max_values=len(self.options)
-
-
-    async def callback(self, interaction: discord.Interaction):
-        self.mod_roles = list(map(int, self.values))
-        log.debug(f'updated moderator count is {len(self.mod_roles)}')
-        Connector.set_moderators(self.scope.instance_id, self.mod_roles)
-        await interaction.response.defer(ephemeral=True)
-
-
-class CommunitySettingsView(SettingsPageTemplate):
-    def __init__(self, scope:Connector.Scope, author: Union[discord.User, discord.Member], guild_roles: list[discord.Role], page_callback, *args, **kwargs):
-        super().__init__(scope, page=1, page_callback=page_callback, dropdown_row=4, *args, **kwargs)
+        self.scope: Connector.Scope = scope
         self.update_ui_elements()
 
-        self.guild_roles = guild_roles
-        self.author = author
+        # server settings need 'Manage Server' (administrators have it)
+        self.forbidden = not lib.permissions.can_change_settings(author)
 
-        mod_roles = Connector.get_moderators(self.scope.instance_id)
-
-        if isinstance(self.author, discord.Member):
-            self.role_drop = RoleDropDown(scope=scope, author=self.author, guild_roles=self.guild_roles, mod_roles=mod_roles)
-            self.add_item(self.role_drop)
-            author_roles = self.author.roles
-        else:
-            author_roles = []
-
-
-        action = CommunityAction(settings=True)
-        self.forbidden = not lib.permissions.check_user_permission(self.scope.instance_id, author_roles, required_perms=action, member=self.author)
-
-        if scope.is_private or (self.forbidden and not self.author.guild_permissions.administrator):
+        if scope.is_private or self.forbidden:
             self.disable_all()
-            self.dd.disabled = False
-
-
-    def update_ui_elements(self):
-        comm_mode = Connector.get_community_mode(self.scope.instance_id)
-
-        if comm_mode == Connector.CommunityMode.ENABLED:
-            self.mode_enabled.style=discord.ButtonStyle.success
-            self.mode_enabled.disabled=True
-            self.mode_disablde.style=discord.ButtonStyle.secondary
-            self.mode_disablde.disabled=False
-
-            self.mode_config.disabled = False
-        else:
-            self.mode_enabled.style=discord.ButtonStyle.secondary
-            self.mode_enabled.disabled=False
-            self.mode_disablde.style=discord.ButtonStyle.secondary
-            self.mode_disablde.disabled=True
-
-            self.mode_config.disabled = True
-
-
-    def get_embed(self) -> discord.Embed:
-        eb = discord.Embed(title='Remindme Community-Settings',
-                description='Server Managers can toggle the community mode, aswell as declare new moderators for this bot.'\
-                            'The restrictions in community modes can be specified in "Config..."')
-
-        if self.forbidden:
-            eb.color = Consts.col_err
-            eb.description = 'You do not have permissions to modify the settings of this server. Only moderators (or members with `Manage Server` when community mode is disabled) can do so.'
-
-        return eb
-
-
-    def get_denied_embed(self) -> discord.Embed:
-        return discord.Embed(title='Missing Permissions',
-                                description='You are missing the privileges to modify the community settings of this bot',
-                                color=Consts.col_err)
-
-    async def send_update_ui(self, interaction: discord.Interaction):
-        self.update_ui_elements()
-        await interaction.response.edit_message(view=self)
-
-
-    @discord.ui.button(label='Community Mode', style=discord.ButtonStyle.primary, row=0)
-    async def community_mode(self, button: discord.ui.Button, interaction: discord.Interaction):
-        # label only: acknowledge, or Discord reports that the bot did not respond
-        await interaction.response.defer()
-
-    @discord.ui.button(label='Disabled', style=discord.ButtonStyle.secondary, row=0)
-    async def mode_disablde(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_community_mode(self.scope.instance_id, Connector.CommunityMode.DISABLED)
-        await self.send_update_ui(interaction)
-
-    @discord.ui.button(label='Enabled', style=discord.ButtonStyle.secondary, row=0)
-    async def mode_enabled(self, button: discord.ui.Button, interaction: discord.Interaction):
-        Connector.set_community_mode(self.scope.instance_id, Connector.CommunityMode.ENABLED)
-        await self.send_update_ui(interaction)
-
-    @discord.ui.button(label='Configure...', style=discord.ButtonStyle.secondary, row=0)
-    async def mode_config(self, button: discord.ui.Button, interaction: discord.Interaction):
-
-        view = CommunitySubSettings(self.scope, message=self.message)
-        eb = view.get_embed()
-        await interaction.response.edit_message(embed=eb, view=view)
-
-        timed_out = await view.wait()
-        self.message = view.message
-        if timed_out or not view.open_interaction:
-            # the sub menu timed out, nothing to answer
-            return
-
-        eb = self.get_embed()
-        self.update_ui_elements()
-        await view.open_interaction.response.edit_message(embed=eb, view=self)
-
-
-    @discord.ui.button(label='Moderators:', style=discord.ButtonStyle.secondary, row=1)
-    async def mod_placeholder_btn(self, button: discord.ui.Button, interaction: discord.Interaction):
-        # label only: acknowledge, or Discord reports that the bot did not respond
-        await interaction.response.defer()
-
-
-
-class BaseSettings(SettingsPageTemplate):
-    def __init__(self, scope: Connector.Scope, author: Union[discord.User, discord.Member], guild_roles: list[discord.Role], page_callback, *args, **kwargs):
-        super().__init__(scope=scope, page=0, roles=[], page_callback=page_callback, dropdown_row=4, *args, **kwargs)
-        self.update_ui_elements()
-
-        if isinstance(author, discord.Member):
-            author_roles = author.roles
-        else:
-            # discord removed role attr from Users (DM) entirely
-            author_roles = []
-
-        action = CommunityAction(settings=True)
-        self.forbidden = not lib.permissions.check_user_permission(self.scope.instance_id, author_roles, required_perms=action, member=author)
-
-        if scope.is_private or (self.forbidden and not author.guild_permissions.administrator):
-            self.disable_all()
-            self.dd.disabled = False
 
 
     def update_ui_elements(self):
@@ -445,7 +112,7 @@ class BaseSettings(SettingsPageTemplate):
 
         if self.forbidden:
             eb.color = Consts.col_err
-            eb.description = 'You do not have permissions to modify the settings of this server. Only moderators (or members with `Manage Server` when community mode is disabled) can do so.'
+            eb.description = 'You need the `Manage Server` permission to change the settings of this server.'
 
         return eb
     
@@ -513,49 +180,6 @@ class BaseSettings(SettingsPageTemplate):
         Connector.set_auto_delete(self.scope.instance_id, Connector.AutoDelete.HIDE)
         await self.send_update_ui(interaction)
 
-
-
-class SettingsManager():
-    def __init__(self, ctx: discord.ApplicationContext, scope, page, *args, **kwargs):
-        
-        self.scope = scope
-        self.ctx = ctx
-
-        self.roles = ctx.guild.roles if ctx.guild else []
-
-        self.view:SettingsPageTemplate = self._page_lookup(page)(scope=scope, author=ctx.author, guild_roles=self.roles, page_callback=self.page_switch)
-        
-
-    def _page_lookup(self, page: int) -> SettingsPageTemplate:
-        lut = {
-            0: BaseSettings,
-            1: CommunitySettingsView,
-        }
-        if page in lut:
-            return lut[page]
-        else:
-            raise ValueError(f'Unsupported Page number {page}')
-
-
-    async def send(self):
-        eb = self.view.get_embed()
-        msg = await self.ctx.respond(embed=eb, view=self.view, ephemeral=True)
-        self.view.message = msg
-
-
-
-    async def page_switch(self, interaction: discord.Interaction):
-        if self.view.dd.page != self.view.dd.next_page:
-            # get view based on next page
-            new_page = int(self.view.dd.next_page)
-            new_view = self._page_lookup(new_page)(scope=self.scope, author=self.ctx.author, guild_roles=self.roles, page_callback=self.page_switch, message=self.view.message)
-
-            # stop the old view and replac with new one
-            message = self.view.message
-            self.view.stop()
-            self.view = new_view
-
-            await interaction.response.edit_message(embed=self.view.get_embed(), view=self.view)
 
 
 class SettingsModule(commands.Cog):
@@ -634,8 +258,8 @@ class SettingsModule(commands.Cog):
         )
 
 
-        sets = SettingsManager(ctx=ctx, scope=scope, page=0)
-        await sets.send()
+        view = SettingsView(scope=scope, author=ctx.author)
+        view.message = await ctx.respond(embed=view.get_embed(), view=view, ephemeral=True)
 
 
 

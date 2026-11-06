@@ -17,9 +17,7 @@ from discord.ext import commands, tasks
 from util.consts import Consts
 from lib.Connector import Connector
 from lib.Reminder import Reminder, IntervalReminder
-from lib.CommunitySettings import CommunitySettings, CommunityAction
 import lib.input_parser
-import lib.permissions
 import lib.ReminderRepeater
 import util.interaction
 import util.reminderInteraction
@@ -243,14 +241,6 @@ class ReminderCreation(commands.Cog):
                 embed.set_footer(text=ReminderCreation.HELP_FOOTER)
                 await ctx.respond(embed=embed, ephemeral=True)
                 return
-            
-            elif not lib.permissions.check_user_permission(instance_id, author_roles, required_perms=CommunityAction(repeating=True)):
-                # make sure the user is allowed to create repeating reminders
-                # if its a DM (no guild object), the user is always allowed and permissions are not checked
-                err_eb = lib.permissions.get_missing_permissions_embed(instance_id, author_roles, required_perms=CommunityAction(repeating=True))
-                if err_eb:
-                    await ctx.respond(embed=err_eb, ephemeral=True)
-                return
 
         if auto_del_action == Connector.AutoDelete.HIDE:
             defer_hidden=True
@@ -386,23 +376,7 @@ class ReminderCreation(commands.Cog):
             log.critical('user not loaded, investigation required')
             1/0
 
-        # determining if the mention is @everyone depends
-        # on how the role was resolved (and if it even is a role)
-        if not ctx.guild:
-            is_everyone = False
-        elif isinstance(target, int):
-            is_everyone = (ctx.guild.id == target)
-        else:
-            is_everyone = (ctx.guild.default_role == target)
-
         if ctx.guild:
-             # only allow execution if all permissions are present        
-            action = CommunityAction(foreign=True, everyone=is_everyone)
-            err_eb = lib.permissions.get_missing_permissions_embed(ctx.guild.id, ctx.author.roles, required_perms=action)
-            if err_eb:
-                await ctx.respond(embed=err_eb)
-                return
-
             # update channel, when not specified (optional parameter)
             channel = channel or ctx.channel
 
@@ -416,11 +390,6 @@ class ReminderCreation(commands.Cog):
                         #channel:discord.Option((discord.TextChannel,discord.VoiceChannel), 'Show the reminder in a channel other than the current one', required=False)=None):
         channel = None
         if ctx.guild:
-            # call will fail if community mode is enabled
-            err_eb = lib.permissions.get_missing_permissions_embed(ctx.guild.id, ctx.author.roles)
-            if err_eb:
-                await ctx.respond(embed=err_eb)
-                return
             channel = channel or ctx.channel # overwrite if not specified
 
         await self.process_reminder(ctx, ctx.author, ctx.author, time, message, channel=channel)

@@ -6,8 +6,6 @@ from typing import Union
 import discord
 
 from lib.Connector import Connector, Reminder
-from lib.CommunitySettings import CommunitySettings, CommunityAction
-import lib.permissions
 
 import logging
 
@@ -194,13 +192,6 @@ class SnoozeView(CustomView):
 
     async def snooze_reminder(self, button: discord.ui.Button, interaction: discord.Interaction, delay_seconds: int):
         
-        if interaction.guild:
-            # call will fail if community mode is enabled
-            err_eb = lib.permissions.get_missing_permissions_embed(interaction.guild.id, interaction.user.roles, user_name=interaction.user.display_name)
-            if err_eb:
-                await interaction.response.send_message(embed=err_eb)
-                return
-
         # convert to json and back to reminder object
         # this automatically converts intervals to reminders
         snoozed = Reminder(self.reminder._to_json())

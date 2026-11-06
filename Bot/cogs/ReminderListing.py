@@ -35,12 +35,9 @@ class ReminderListView(util.interaction.CustomView):
         if self.stm.scope.is_private:
             title_str = f'**Private** Reminder list'
         else:
-            title_str = f'Reminder list for {self.stm.ctx.guild.name}'        
-        footer_str = 'Reminders marked with * belong to other users'
+            title_str = f'Reminder list for {self.stm.ctx.guild.name}'
 
-        eb = ReminderListing.get_reminder_list_eb(self.stm.reminders, self.stm.page, title_str, self.stm.tz_str, self.stm.scope.user_id)
-        eb.set_footer(text=footer_str)
-        return eb
+        return ReminderListing.get_reminder_list_eb(self.stm.reminders, self.stm.page, title_str, self.stm.tz_str, self.stm.scope.user_id)
 
     
     def get_reminders_on_page(self, reminders, page):
@@ -72,8 +69,7 @@ class ReminderListView(util.interaction.CustomView):
         """reload the reminders and keep the page in range
            (the last page can disappear after a deletion)
         """
-        roles = self.stm.ctx.author.roles if self.stm.scope.guild_id else []
-        self.stm.reminders = Connector.get_guild_reminders(self.stm.scope, roles)
+        self.stm.reminders = Connector.get_scoped_reminders(self.stm.scope)
         self.stm.page = min(self.stm.page, self.page_count() - 1)
 
 
@@ -300,8 +296,7 @@ class ReminderListing(commands.Cog):
 
     async def reminder_stm(self, stm: util.reminderInteraction.STM):
         # first fetch of reminders
-        roles = stm.ctx.author.roles if stm.scope.guild_id else []
-        stm.reminders = Connector.get_guild_reminders(stm.scope, roles)
+        stm.reminders = Connector.get_scoped_reminders(stm.scope)
 
         # manually send initial message to init view
         view = ReminderListView(stm)
