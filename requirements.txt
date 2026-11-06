@@ -1,6 +1,6 @@
 pytz
 tzdata
-python-dateutil
+python-dateutil<3  # 3.x removed getzoneinfofile_stream, used by TimezoneModule
 pymongo
 requests
 Unidecode
