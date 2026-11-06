@@ -149,25 +149,48 @@ class RuleMode(Enum):
     DATE_EX_ADD=3
 
 
-class RuleModal(discord.ui.Modal):
-    def __init__(self, field, custom_callback, mode: RuleMode, *args, **kwargs):
+class RuleModal(discord.ui.DesignerModal):
+    """popup asking for one rule or date
+
+    help_text (optional) is shown above the field and may contain links
+    (a 'designer' modal: a plain Modal only holds text fields)
+    """
+    def __init__(self, field, custom_callback, mode: RuleMode, help_text: str = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.value = None
         self.custom_callback = custom_callback
         self.message = None
         self.mode = mode
 
+        if help_text:
+            self.add_item(discord.ui.TextDisplay(help_text))
 
-        self.add_item(
-            discord.ui.InputText(
-                label=field,
-                style=discord.InputTextStyle.singleline
-            )
-        )
+        self.input = discord.ui.InputText(style=discord.InputTextStyle.singleline)
+        self.add_item(discord.ui.Label(field, self.input))
+
+
+    def _submitted_value(self, interaction: discord.Interaction):
+        """the text typed in the field, found by its custom_id in the submitted data
+
+        (py-cord matches submitted components to the modal items by position,
+        which would break if Discord left the text display out of the payload)
+        """
+        def walk(components):
+            for comp in components or []:
+                if comp.get('custom_id') == self.input.custom_id:
+                    return comp.get('value')
+                nested = comp.get('components') or ([comp['component']] if 'component' in comp else [])
+                found = walk(nested)
+                if found is not None:
+                    return found
+            return None
+
+        value = walk((interaction.data or {}).get('components'))
+        return value if value is not None else self.input.value
 
 
     async def callback(self, interaction: discord.Interaction):
-        user_input = self.children[0].value
+        user_input = self._submitted_value(interaction)
         self.value = user_input
 
         
@@ -323,11 +346,6 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
         self.reminder = reminder
         self.stm = stm
-
-        # link to build RRULEs for 'Add Repeating Rule' / 'Add Exception Rule'
-        self.generator_btn = discord.ui.Button(style=discord.ButtonStyle.link, label='RRULE Generator',
-                                               url=RRULE_GENERATOR_URL, row=3)
-        self.add_item(self.generator_btn)
         self.update_btn_activation()
 
     # one-click repetitions, based on the date and time of the reminder
@@ -364,8 +382,6 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             btn.disabled=disabled
 
         self.return_btn.disabled=False # always allow return
-        if hasattr(self, 'generator_btn'):
-            self.generator_btn.disabled=False # a link, always usable
         
 
     async def rrule_callback(self, interaction: discord.Interaction, user_input: str, mode: RuleMode):
@@ -537,7 +553,10 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         modal = RuleModal(field='Repeat, e.g. "every friday at 7" or an RRULE',
                             title='Add Repeating Rule',
                             custom_callback=self.rrule_callback,
-                            mode=RuleMode.RRULE_ADD)
+                            mode=RuleMode.RRULE_ADD,
+                            help_text='Write the repetition in plain words (`every friday at 7`, `every 2 weeks`, '\
+                                      '`every weekday`) or paste an RRULE.\n'\
+                                      f'Build an RRULE with the [RRULE Generator]({RRULE_GENERATOR_URL}).')
 
         await interaction.response.send_modal(modal)
 
@@ -549,7 +568,10 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         modal = RuleModal(field='Skip, e.g. "every saturday" or an RRULE',
                             title='Add Exception Rule',
                             custom_callback=self.rrule_callback,
-                            mode=RuleMode.RRULE_EX_ADD)
+                            mode=RuleMode.RRULE_EX_ADD,
+                            help_text='The reminder will **not** be sent on the dates of this rule. '\
+                                      'Write it in plain words (`every saturday`) or paste an RRULE.\n'\
+                                      f'Build an RRULE with the [RRULE Generator]({RRULE_GENERATOR_URL}).')
         await interaction.response.send_modal(modal)
 
 
