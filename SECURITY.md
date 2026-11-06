@@ -1,15 +1,14 @@
 # Security Policy
 
-## Supported Versions
-
-The Remindme Bot is deployed as a rolling release.
-The most recent commit on master is being executed on the official bot instance.
-
-This means potential security fixes will **not** be ported to older revisions of this repository.
+This repository is a personal, self-hosted fork of
+[Mayerch1/RemindmeBot](https://github.com/Mayerch1/RemindmeBot).
+Only the latest commit of `master` is maintained.
 
 ## Reporting a Vulnerability
 
-Please contact me by email on security concerns of this application.
-The email address is linked on my [Github Profile](https://github.com/Mayerch1)
+Please do not open a public issue with the details.
+Use GitHub's **Report a vulnerability** button in the *Security* tab of this
+repository, or open an issue asking for a private contact.
 
-I will try to respond and reach out for further question as soon as possible.
+If the vulnerability also affects the original project, please report it to
+its author as well.

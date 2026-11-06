@@ -20,6 +20,7 @@ from util.consts import Consts
 # - LOG_LEVEL (default INFO) for the bot's own loggers, DEBUG for details
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
 LOG_FILE = os.getenv('LOG_FILE', './logs/bot.log')
+os.makedirs(os.path.dirname(LOG_FILE) or '.', exist_ok=True)  # fresh clones have no logs/
 
 _formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s', datefmt='%Y-%m-%dT%H:%M:%SZ')
 _formatter.converter = time.gmtime  # log times in UTC, whatever the machine timezone

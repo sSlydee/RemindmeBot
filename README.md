@@ -1,23 +1,43 @@
-![# Remindme Bot](https://discords.com/bots/api/bot/831142367397412874/widget)
+# Remindme Bot (personal fork)
 
-This bot is inspired by the reddit remindme bot and allows similar usage.
+A Discord bot to set reminders with slash commands, inspired by the reddit remindme bot.
 
-* Create as many Reminders as you want (no rate limit or vote bounties)
-* Create intervals (shortest interval is hourly)
-* Remind other users and roles (@everyone)
-* Create complex repeating patterns (ics-rrules, rfc-5545)
-* Set the timezone of your server
-* Minimal Permissions required
+This repository is a **self-hosted, personal fork** of
+[Mayerch1/RemindmeBot](https://github.com/Mayerch1/RemindmeBot). It is not the
+public bot of the original author: to use it, run your own instance (see
+[Self-hosting](#self-hosting)).
+
+* Create as many reminders as you want
+* Repeating reminders (`every friday at 20:15`) and complex patterns (iCalendar RRULE, RFC 5545)
+* Remind other users and roles
+* Per-server timezone (per-user in DMs), with daylight saving
+* Snooze delivered reminders, edit them with `/reminder_list`
+
+<img src="res/remindme.gif" alt="Create a reminder">
+
+<img src="res/remindInterval.gif" alt="Create an interval"/>
 
 
-<img src="https://imgur.com/YE9qXOE.gif" alt="Create Reminder">
+## Differences with the original bot
 
+Removed, as a personal bot does not need them:
+* statistics (Prometheus metrics server), top.gg server count, sharding
+* community mode (moderator roles and per-feature restrictions):
+  changing the server settings (`/settings`, `/timezone`) needs the
+  **Manage Server** permission
+* legacy UTC intervals and the experimental settings page
 
-<img src="https://imgur.com/lQrUmkF.gif" alt="Create Interval"/>
-
----
-
-[Invite the Bot](https://discord.com/api/oauth2/authorize?client_id=831142367397412874&permissions=274877991936&scope=bot%20applications.commands) or view it's profile on [top.gg](https://top.gg/bot/831142367397412874)
+Fixed or added:
+* repeating reminders keep their local time when built with the buttons,
+  and `UNTIL` in UTC is accepted in repeating rules
+* reminders are deleted only after their delivery attempt,
+  and the delivery loops survive database errors
+* snooze counts from the click and keeps the whole message
+* editing a reminder's date (`/remindme` syntax) and image works
+* native Discord channel picker, many interaction fixes
+* timestamps independent of the machine timezone
+* rotating log file, optional [Uptime Kuma](https://github.com/louislam/uptime-kuma) heartbeat
+* unit tests on GitHub Actions
 
 
 ## Some users cannot use the bot?
@@ -27,13 +47,13 @@ This bot is inspired by the reddit remindme bot and allows similar usage.
 Make sure the user has sufficient permission to execute **Application Commands** (`slash-commands` in earlier versions).
 This permission can be used to restrict access to bots, but is usually enabled for @everyone by default
 
-<img src="https://imgur.com/3BGMlVl.png" alt="Create Reminder">
+<img src="res/slashPermissions.jpg" alt="Application command permissions">
 
 ### User Settings
 If the permissions are all set, but certain users are still not able to use slash-commands, the discord application might be setup incorrectly. Tell the affected user(s) to open their `user settings` and navigate to the `Text & images` section.
 
 In the lower part of said settings page, you can find an option to toggle the usage of slash-commands.
-<img src="https://imgur.com/lI5QRoT.png" alt="Create Reminder">
+<img src="res/slashSettings.jpg" alt="User settings">
 
 
 
@@ -64,9 +84,9 @@ The bot supports the full `rfc5545`-spec and allows the combination of up to 25 
 |---|---|
 |```remindme <time> <message>```  | reminds you after the given `<time>` period| 
 |```remind <mentionable> <time> <message>``` | reminds another user/role after the given `<time>` period|
-|```reminder_list``` | manage all your reminders for this server (interactive DM) |
-|```settings``` | get an overview over all settings |
-|```timezone <timezone>``` | set the timezone of your server using a [time zone defined by IANA](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones#List), defaults to UTC|
+|```reminder_list``` | manage your reminders for this server (only visible to you) |
+|```settings``` | show and change the server settings (changes need **Manage Server**) |
+|```timezone <timezone>``` | set the timezone of your server using a [time zone defined by IANA](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones#List), defaults to UTC (needs **Manage Server**; in DMs it sets your own timezone)|
 |```help``` | show the help page for this bot |
 
 
@@ -135,5 +155,74 @@ The correct plural of the time interval does not matter
 `/remindme 1 weeks Hey` is just as valid as `/remindme 2 week Ho`
 
 
-### Github
-https://github.com/Mayerch1/RemindmeBot
+## Self-hosting
+
+### Requirements
+* Python 3.11 or newer (tested on 3.11 and 3.13)
+* MongoDB (any recent version, with authentication)
+* A Discord application with a bot user
+  ([Developer Portal](https://discord.com/developers/applications)), no privileged intent needed
+
+### Install
+```bash
+git clone --recurse-submodules https://github.com/sSlydee/RemindmeBot.git
+cd RemindmeBot
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+The `--recurse-submodules` is required: the natural language parser lives in
+the `Bot/lib/recurrent` submodule.
+
+### Configuration
+The bot reads its configuration from environment variables:
+
+| Variable | Required | Description |
+|---|---|---|
+| `BOT_TOKEN` | yes | token of the Discord bot |
+| `MONGO_CONN` | yes | MongoDB host, e.g. `127.0.0.1` |
+| `MONGO_PORT` | yes | MongoDB port, e.g. `27017` |
+| `MONGO_ROOT_USER` | yes | MongoDB user (authenticated against `admin`) |
+| `MONGO_ROOT_PASS` | yes | MongoDB password |
+| `LOG_LEVEL` | no | log level of the bot, `INFO` (default) or `DEBUG` |
+| `LOG_FILE` | no | log file, default `logs/bot.log` (relative to `Bot/`), rotated at 5 MB |
+| `UPTIME_KUMA_PUSH_URL` | no | push URL of an Uptime Kuma *Push* monitor: each successful delivery run sends a heartbeat |
+
+The data is stored in the `reminderBot` database.
+
+### Run
+```bash
+cd Bot
+set -a; . ../.env; set +a   # or any other way to set the variables above
+../.venv/bin/python remindmeBot.py
+```
+To keep it running, use a service manager (for example a systemd service with
+`WorkingDirectory=.../Bot`, `EnvironmentFile=.../.env` and `Restart=on-failure`).
+
+The `Dockerfile` and `docker-compose.yml` come from the original project and
+are not tested in this fork.
+
+### Invite the bot
+Replace `CLIENT_ID` with the application id of your bot:
+```
+https://discord.com/oauth2/authorize?client_id=CLIENT_ID&permissions=274877991936&scope=bot%20applications.commands
+```
+The permissions are: View Channels, Send Messages, Send Messages in Threads,
+Embed Links and Read Message History. `/help` also has an *Invite Me* button
+with the same link.
+
+Set the server timezone with `/timezone` (for example `Europe/Paris`), the
+default is UTC.
+
+
+## Development
+
+Run the unit tests from the repository root:
+```bash
+.venv/bin/python -m unittest discover -s unit_tests -t . -p '*Test.py'
+```
+They run on GitHub Actions on every push (Python 3.11 and 3.13).
+
+
+## Credits
+
+Original bot by [Mayerch1](https://github.com/Mayerch1/RemindmeBot).
