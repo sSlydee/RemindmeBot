@@ -65,10 +65,27 @@ class ReminderListView(util.interaction.CustomView):
         return reminders[from_idx:to_idx]
 
 
-    def update_dropdown(self):
+    def page_count(self) -> int:
+        return max(math.ceil(len(self.stm.reminders) / 9), 1)
+
+
+    def refresh_reminders(self):
+        """reload the reminders and keep the page in range
+           (the last page can disappear after a deletion)
+        """
         roles = self.stm.ctx.author.roles if self.stm.scope.guild_id else []
         self.stm.reminders = Connector.get_guild_reminders(self.stm.scope, roles)
+        self.stm.page = min(self.stm.page, self.page_count() - 1)
+
+
+    def update_dropdown(self, refresh=True):
+        if refresh:
+            self.refresh_reminders()
         page_rems = self.get_reminders_on_page(self.stm.reminders, self.stm.page)
+
+        # delete old selects, also when the page is now empty
+        for old_sel in [x for x in self.children if isinstance(x, discord.ui.Select)]:
+            self.remove_item(old_sel)
 
         if(len(page_rems) > 25):
             # TODO: debug issue?
@@ -91,45 +108,32 @@ class ReminderListView(util.interaction.CustomView):
 
             dd = discord.ui.Select(
                 placeholder='Select a reminder to edit',
-                min_values=0,
+                min_values=1,
                 max_values=1,
                 options=reminder_opts
             )
             dd.callback = self.dropdown_callback
-
-            # delete old selects
-            old_sel = [x for x in self.children if isinstance(x, discord.ui.Select)]
-            if old_sel:
-                self.children.remove(old_sel[0])
             self.add_item(dd)
 
 
 
     @discord.ui.button(emoji='⏪', style=discord.ButtonStyle.secondary)
     async def prev_page(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        self.stm.page -= 1
-        page_cnt = math.ceil(len(self.stm.reminders) / 9)
+        self.refresh_reminders()
+        self.stm.page = (self.stm.page - 1) % self.page_count()
 
-        if self.stm.page < 0:
-            self.stm.page = page_cnt-1
-
-        new_eb = self.get_embed()
-        self.update_dropdown()
-        await interaction.response.edit_message(embed=new_eb, view=self)
+        self.update_dropdown(refresh=False)
+        await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
 
 
     @discord.ui.button(emoji='⏩', style=discord.ButtonStyle.secondary)
     async def next_page(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        self.stm.page += 1
-        page_cnt = math.ceil(len(self.stm.reminders) / 9)
+        self.refresh_reminders()
+        self.stm.page = (self.stm.page + 1) % self.page_count()
 
-        if self.stm.page >= page_cnt:
-            self.stm.page = 0
-
-        new_eb = self.get_embed()
-        self.update_dropdown()
-        await interaction.response.edit_message(embed=new_eb, view=self)
+        self.update_dropdown(refresh=False)
+        await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
 
 
@@ -139,16 +143,15 @@ class ReminderListView(util.interaction.CustomView):
         # do not update reminder list
         # otherwise the user selected reminder could be another one than the actual one
         page_rems = self.get_reminders_on_page(self.stm.reminders, self.stm.page)
-        sel = interaction.data['values'][0] # min_select 1
-        
+        values = interaction.data.get('values') or []
 
-        if int(sel) >= len(page_rems):
-            # list is not long enough anymore
-            # update ui to show shorter list
-            new_eb = self.get_embed()
+        if not values or int(values[0]) >= len(page_rems):
+            # nothing selected, or the list is not long enough anymore
+            # update ui to show the current list
             self.update_dropdown()
-            await interaction.edit_original_message(embed=new_eb, view=self) # already responded
+            await interaction.response.edit_message(embed=self.get_embed(), view=self)
             return
+        sel = values[0]
 
 
         # go ahead with reminder edit
@@ -157,15 +160,24 @@ class ReminderListView(util.interaction.CustomView):
         rem_embed = view.get_embed()
         await interaction.response.edit_message(embed=rem_embed, view=view)
 
-        await view.wait()
+        timed_out = await view.wait()
         self.message = view.message # update in case it was transferred
+        if timed_out:
+            # the edit view disabled itself, the menu is over
+            return
 
         # update reminder list and dropdown
-        roles = self.stm.ctx.author.roles if self.stm.scope.guild_id else []
-        self.stm.reminders = Connector.get_guild_reminders(self.stm.scope, roles)
         self.update_dropdown()
         new_eb = self.get_embed()
-        await view.open_interaction.response.edit_message(embed=new_eb, view=self) # already responded
+        if view.open_interaction:
+            # 'Return' pressed: answer that click
+            await view.open_interaction.response.edit_message(embed=new_eb, view=self)
+        else:
+            # reminder deleted: its last click was already answered
+            if isinstance(self.message, discord.WebhookMessage):
+                await self.message.edit(embed=new_eb, view=self)
+            else:
+                await self.message.edit_original_response(embed=new_eb, view=self)
         # self is not used anymore, until this is finished
 
 
@@ -256,7 +268,7 @@ class ReminderListing(commands.Cog):
 
         out_str = ReminderListing._create_reminder_list(selectables, tz_str, author_id=author_id)
 
-        embed = discord.Embed(title=f'{title_start} {page+1}/{min(page_cnt, 1)}',
+        embed = discord.Embed(title=f'{title_start} {page+1}/{max(page_cnt, 1)}',
                                 description=out_str)
         return embed
 
