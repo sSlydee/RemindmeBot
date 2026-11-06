@@ -12,6 +12,7 @@ from discord.ext.servercount import ServerCount
 
 from lib.Connector import Connector
 from lib.Analytics import Analytics, Types
+from util.loops import log_errors
 
 FEEDBACK_CHANNEL = 872104333007785984
 FEEDBACK_MENTION = 872107119988588566
@@ -272,6 +273,7 @@ def config_help():
 
 
 @tasks.loop(hours=6)
+@log_errors(log)
 async def update_experimental_count():
     
     log.debug('updating experimental server count')
@@ -280,6 +282,7 @@ async def update_experimental_count():
 
 
 @tasks.loop(hours=3)
+@log_errors(log)
 async def update_community_count():
     log.debug('updating anayltics guild/community count')
 

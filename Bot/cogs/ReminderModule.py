@@ -20,6 +20,7 @@ import lib.input_parser
 import lib.ReminderRepeater
 import util.interaction
 from util.verboseErrors import VerboseErrors
+from util.loops import log_errors
 from util.consts import Consts
 
 from lib.Analytics import Analytics, Types
@@ -283,6 +284,7 @@ class ReminderModule(commands.Cog):
 
 
     @tasks.loop(hours=24)
+    @log_errors(log)
     async def clean_interval_orphans(self):
         cnt = Connector.delete_orphaned_intervals()
 
@@ -291,6 +293,7 @@ class ReminderModule(commands.Cog):
 
 
     @tasks.loop(seconds=45)
+    @log_errors(log)
     async def check_pending_intervals(self):   
         now = datetime.utcnow()
         
@@ -323,6 +326,7 @@ class ReminderModule(commands.Cog):
 
 
     @tasks.loop(seconds=50)
+    @log_errors(log)
     async def check_pending_reminders(self):
         now = datetime.utcnow()
 
@@ -347,11 +351,13 @@ class ReminderModule(commands.Cog):
     
    
     @tasks.loop(minutes=15)
+    @log_errors(log)
     async def check_reminder_cnt(self):
         rems = Connector.get_reminder_cnt()
         Analytics.reminder_cnt(rems)
 
     @tasks.loop(minutes=15)
+    @log_errors(log)
     async def check_interval_cnt(self):
         intvls = Connector.get_interval_cnt()
         Analytics.interval_cnt(intvls)
