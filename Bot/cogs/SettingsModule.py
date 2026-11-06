@@ -401,8 +401,11 @@ class CommunitySettingsView(SettingsPageTemplate):
         eb = view.get_embed()
         await interaction.response.edit_message(embed=eb, view=view)
 
-        await view.wait()
+        timed_out = await view.wait()
         self.message = view.message
+        if timed_out or not view.open_interaction:
+            # the sub menu timed out, nothing to answer
+            return
 
         eb = self.get_embed()
         self.update_ui_elements()

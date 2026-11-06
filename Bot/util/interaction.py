@@ -144,9 +144,13 @@ class MulitDropdownView(CustomView):
 
     
     async def callback(self, interaction: discord.Interaction):
-        
-        # min select 1 guaranteed
-        self.value = interaction.data['values'][0]
+
+        values = interaction.data.get('values') or []
+        if not values:
+            # nothing selected, keep waiting for a choice
+            await interaction.response.defer()
+            return
+        self.value = values[0]
 
         # find selected item and make it default
         # this is a workaround as disabling the item 

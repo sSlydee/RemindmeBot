@@ -139,6 +139,11 @@ class TimezoneModule(discord.Cog):
             elif value.upper() == 'EDT':
                 closest_tz = ['EST5EDT']
             
+            if not closest_tz:
+                # nothing to suggest, Discord refuses an empty dropdown
+                await ctx.respond(embed=self._get_tz_error_eb(value, no_list=True), ephemeral=True)
+                return
+
             # create a dropdown list
             options = [discord.SelectOption(
                     label=opt,
@@ -148,7 +153,7 @@ class TimezoneModule(discord.Cog):
             # hand the dropdown to managing class
             dd = discord.ui.Select(
                     placeholder='Select a timezone',
-                    min_values=0,
+                    min_values=1,
                     max_values=1,
                     options=options
                 )

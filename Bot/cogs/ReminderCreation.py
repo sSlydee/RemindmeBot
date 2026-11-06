@@ -267,6 +267,9 @@ class ReminderCreation(commands.Cog):
             elif not lib.permissions.check_user_permission(instance_id, author_roles, required_perms=CommunityAction(repeating=True)):
                 # make sure the user is allowed to create repeating reminders
                 # if its a DM (no guild object), the user is always allowed and permissions are not checked
+                err_eb = lib.permissions.get_missing_permissions_embed(instance_id, author_roles, required_perms=CommunityAction(repeating=True))
+                if err_eb:
+                    await ctx.respond(embed=err_eb, ephemeral=True)
                 return
 
         if auto_del_action == Connector.AutoDelete.HIDE:
