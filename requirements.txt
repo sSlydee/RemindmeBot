@@ -4,9 +4,6 @@ python-dateutil<3  # 3.x removed getzoneinfofile_stream, used by TimezoneModule
 pymongo
 requests
 Unidecode
-prometheus-client
-waitress
-Flask
 recurrent
 parsedatetime
 validators
@@ -17,6 +14,5 @@ aiodns
 brotli
 cchardet==2.2.0a2
 msgspec
-# pycord + extensions
+# pycord
 py-cord==2.7.2
-git+https://github.com/Mayerch1/discord-ext-servercount

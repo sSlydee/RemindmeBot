@@ -13,7 +13,6 @@ import lib.input_parser
 import lib.ReminderRepeater
 from lib.Reminder import Reminder, IntervalReminder
 from lib.Connector import Connector
-from lib.Analytics import Analytics, Types
 
 log = logging.getLogger('Remindme.Listing')
 
@@ -850,10 +849,8 @@ class ReminderEditView(util.interaction.CustomView):
             # delete the reminder
             if isinstance(self.reminder, IntervalReminder):
                 Connector.delete_interval(self.reminder._id)
-                Analytics.interval_deleted(Types.DeleteAction.LISTING)
             else:
                 Connector.delete_reminder(self.reminder._id)
-                Analytics.reminder_deleted(Types.DeleteAction.LISTING)
 
             # go back to previous view
             self.disable_all()

@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from dateutil import tz
 
 from lib.Connector import Connector
-from lib.Analytics import Analytics
 
 log = logging.getLogger('ext.help')
 
@@ -462,7 +461,6 @@ class Help(discord.Cog):
             # button/select menu
             await ctx.response.edit_message(embeds=[embed], view=view)
 
-        Analytics.help_page_called(page.name)
 
 
 

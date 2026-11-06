@@ -9,7 +9,7 @@ from dateutil import tz
 from bson import ObjectId
 
 import copy
-from pytz import common_timezones as pytz_common_timezones, country_timezones
+from pytz import common_timezones as pytz_common_timezones
 
 import discord
 from discord.ext import commands, tasks
@@ -24,7 +24,6 @@ import lib.ReminderRepeater
 import util.interaction
 import util.reminderInteraction
 
-from lib.Analytics import Analytics, Types
 
 
 log = logging.getLogger('Remindme.Creation')
@@ -106,11 +105,9 @@ class NewReminderView(util.interaction.CustomView):
         elif Connector.delete_reminder(self.reminder._id):
             eb_title = 'Deleted the reminder'
             color = Consts.col_warn
-            Analytics.reminder_deleted(Types.DeleteAction.DIRECT_BTN) 
         elif Connector.delete_interval(self.reminder._id):
             eb_title = 'Deleted the reminder'
             color = Consts.col_warn
-            Analytics.interval_deleted(Types.DeleteAction.DIRECT_BTN) 
         else:
             eb_title = 'Failed to delete reminder due to an unknown issue'
             color = Consts.col_crit
@@ -168,12 +165,6 @@ class ReminderCreation(commands.Cog):
 
     def __init__(self, client):
         self.client = client
-        
-        self.timezone_country = {}
-        for countrycode in country_timezones:
-            timezones = country_timezones[countrycode]
-            for timezone in timezones:
-                self.timezone_country[timezone] = countrycode
 
 
     async def process_reminder(self, ctx: discord.ApplicationContext, author: Union[discord.User, discord.Member], target, period, message, channel):
@@ -221,11 +212,6 @@ class ReminderCreation(commands.Cog):
                 embed = discord.Embed(title='Failed to create the reminder', color=0xff0000, description=out_str)
                 embed.set_footer(text=ReminderCreation.HELP_FOOTER)
                 await ctx.respond(embed=embed, ephemeral=True)
-
-                if interval == timedelta(hours=0):
-                    Analytics.reminder_creation_failed(Types.CreationFailed.INVALID_F_STR)
-                else:
-                    Analytics.reminder_creation_failed(Types.CreationFailed.PAST_DATE)
                 return  # error exit
 
         elif remind_at is None:
@@ -238,7 +224,6 @@ class ReminderCreation(commands.Cog):
             embed = discord.Embed(title='Failed to create the reminder', color=0xff0000, description=out_str)
             embed.set_footer(text=ReminderCreation.HELP_FOOTER)
             await ctx.respond(embed=embed, ephemeral=True)
-            Analytics.reminder_creation_failed(Types.CreationFailed.INVALID_F_STR)  
             return  
 
         elif isinstance(remind_at, str):
@@ -260,7 +245,6 @@ class ReminderCreation(commands.Cog):
                 embed = discord.Embed(title='Failed to create the reminder', color=0xff0000, description=out_str)
                 embed.set_footer(text=ReminderCreation.HELP_FOOTER)
                 await ctx.respond(embed=embed, ephemeral=True)
-                Analytics.reminder_creation_failed(Types.CreationFailed.INVALID_F_STR)  
                 return
             
             elif not lib.permissions.check_user_permission(instance_id, author_roles, required_perms=CommunityAction(repeating=True)):
@@ -347,13 +331,10 @@ class ReminderCreation(commands.Cog):
             # do NOT save, if trigger creation faild
             # this should not be possible
             if rem.at:
-                
                 rem._id = Connector.add_interval(rem)
-                Analytics.reminder_created(rem, country_code=self.timezone_country.get(tz_str, 'UNK'), direct_interval=True)
         else:
             # the id is required in case the users wishes to abort
             rem._id = Connector.add_reminder(rem)
-            Analytics.reminder_created(rem, country_code=self.timezone_country.get(tz_str, 'UNK'))
 
 
         if auto_del_action == Connector.AutoDelete.TIMEOUT:

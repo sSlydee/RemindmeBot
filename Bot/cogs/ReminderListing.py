@@ -18,7 +18,6 @@ import util.reminderInteraction
 import util.formatting
 #import lib.ReminderRepeater
 
-from lib.Analytics import Analytics, Types
 
 log = logging.getLogger('Remindme.Listing')
 

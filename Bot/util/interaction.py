@@ -6,7 +6,6 @@ from typing import Union
 import discord
 
 from lib.Connector import Connector, Reminder
-from lib.Analytics import Analytics, Types
 from lib.CommunitySettings import CommunitySettings, CommunityAction
 import lib.permissions
 

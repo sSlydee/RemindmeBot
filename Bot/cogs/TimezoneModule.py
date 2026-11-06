@@ -9,7 +9,7 @@ import difflib
 from datetime import datetime
 from dateutil import tz
 from dateutil.zoneinfo import getzoneinfofile_stream, ZoneInfoFile
-from pytz import common_timezones as pytz_common_timezones, country_timezones
+from pytz import common_timezones as pytz_common_timezones
 
 import discord
 from discord.ext import commands, tasks
@@ -18,7 +18,6 @@ import lib.permissions
 import util.interaction
 from lib.CommunitySettings import CommunityAction
 from lib.Connector import Connector
-from lib.Analytics import Analytics
 from util.consts import Consts
 
 
@@ -36,12 +35,6 @@ class TimezoneModule(discord.Cog):
     
     def __init__(self, client):
         self.client = client
-        
-        self.timezone_country = {}
-        for countrycode in country_timezones:
-            timezones = country_timezones[countrycode]
-            for timezone in timezones:
-                self.timezone_country[timezone] = countrycode
     
 
     ################
@@ -188,9 +181,6 @@ class TimezoneModule(discord.Cog):
         await view.wait()
         if view.value:
             Connector.set_timezone(instance_id, value)
-            Analytics.set_timezone(value, 
-                                country_code=self.timezone_country.get(value, 'UNK'),
-                                deprecated=value not in pytz_common_timezones)
 
         
 

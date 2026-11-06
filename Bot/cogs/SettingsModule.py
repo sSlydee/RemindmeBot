@@ -21,7 +21,6 @@ import lib.permissions
 import util.interaction
 from lib.Connector import Connector
 from lib.CommunitySettings import CommunitySettings, CommunityAction
-from lib.Analytics import Analytics, Types
 
 
 log = logging.getLogger('Remindme.Settings')

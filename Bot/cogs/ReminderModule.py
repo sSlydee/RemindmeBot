@@ -11,7 +11,6 @@ from dateutil import tz
 from bson import ObjectId
 
 import copy
-from pytz import common_timezones as pytz_common_timezones, country_timezones
 
 import discord
 from discord.ext import commands, tasks
@@ -26,7 +25,6 @@ from util.loops import log_errors
 from util.heartbeat import Heartbeat
 from util.consts import Consts
 
-from lib.Analytics import Analytics, Types
 
 log = logging.getLogger('Remindme.Core')
 
@@ -39,7 +37,7 @@ class ReminderModule(commands.Cog):
 
 
     def __init__(self, client):
-        self.client: discord.AutoShardedBot = client
+        self.client: discord.Bot = client
         # optional Uptime Kuma push monitor, fed by the reminder delivery loop
         self.heartbeat = Heartbeat(os.getenv('UPTIME_KUMA_PUSH_URL'))
 
@@ -49,10 +47,6 @@ class ReminderModule(commands.Cog):
             self.check_pending_reminders.start()
         if not self.check_pending_intervals.is_running():
             self.check_pending_intervals.start()
-        if not self.check_reminder_cnt.is_running():
-            self.check_reminder_cnt.start()
-        if not self.check_interval_cnt.is_running():
-            self.check_interval_cnt.start()
         if not self.clean_interval_orphans.is_running():
             self.clean_interval_orphans.start()
 
@@ -60,36 +54,22 @@ class ReminderModule(commands.Cog):
         log.debug('stopping reminder event loops')
         self.check_pending_reminders.cancel()
         self.check_pending_intervals.cancel()
-        self.check_reminder_cnt.cancel()
-        self.check_interval_cnt.cancel()
         self.clean_interval_orphans.cancel()
         
         
-    async def warn_author_dm(self, rem: Reminder, reason, channel:discord.TextChannel=None, err_msg=None):
-        
+    async def warn_author_dm(self, rem: Reminder, reason: str, channel:discord.TextChannel=None, err_msg=None):
+
+        log.warning(f'reminder {rem._id} not delivered: {reason}')
+
         if rem.author == rem.target:
-            # nothing be done here
-            # dm already failed before, 
-            # only convert reason from target->author
-            if reason == Types.DeliverFailureReason.TARGET_FETCH:
-                reason = Types.DeliverFailureReason.AUTHOR_FETCH
-            elif reason == Types.DeliverFailureReason.TARGET_DM:
-                reason = Types.DeliverFailureReason.AUTHOR_DM
-            Analytics.reminder_not_delivered(rem, reason)
-            return # no need for second try on same user
-        
-
-        # expose non-critical error of target not notified
-        Analytics.reminder_not_delivered(rem, reason)
-
+            # the DM to that same user already failed, nothing else to try
+            return
 
         # try to notify the author of the reminder
         try:
             author = await self.client.fetch_user(rem.author)
         except discord.errors.NotFound:
-            # expose second counter for author warn failed
             log.warning(f'cannot find user {rem.author} for author warning')
-            Analytics.reminder_not_delivered(rem, Types.DeliverFailureReason.AUTHOR_FETCH)
             return
         
         guild = self.client.get_guild(rem.g_id) if rem.g_id else None
@@ -114,8 +94,6 @@ class ReminderModule(commands.Cog):
         except discord.errors.Forbidden:
             # dm has no embed permissions, embeds must always succeed
             log.warning(f'failed to send author warning')
-            # expose second counter for author warn failed
-            Analytics.reminder_not_delivered(rem, Types.DeliverFailureReason.AUTHOR_DM)
             return
 
 
@@ -127,11 +105,11 @@ class ReminderModule(commands.Cog):
             target = await self.client.fetch_user(rem.target)
         except discord.errors.NotFound:
             log.warning(f'cannot find user {rem.target} for reminder DM')
-            await self.warn_author_dm(rem, Types.DeliverFailureReason.TARGET_FETCH, channel=channel, err_msg=err_msg)
+            await self.warn_author_dm(rem, 'target user not found', channel=channel, err_msg=err_msg)
             return
 
         if target.bot:
-            await self.warn_author_dm(rem, Types.DeliverFailureReason.TARGET_IS_BOT, channel=channel, err_msg=err_msg)
+            await self.warn_author_dm(rem, 'target is a bot', channel=channel, err_msg=err_msg)
             return
 
         # dm if channel not existing anymor
@@ -165,7 +143,7 @@ class ReminderModule(commands.Cog):
         except discord.errors.Forbidden:
             # embeds can't be forbidden in DMs
             log.warning(f'failed to send reminder as DM to {rem.target}')
-            await self.warn_author_dm(rem, Types.DeliverFailureReason.TARGET_DM, channel=channel, err_msg=err_msg)
+            await self.warn_author_dm(rem, 'cannot DM the target', channel=channel, err_msg=err_msg)
             return
 
 
@@ -292,8 +270,6 @@ class ReminderModule(commands.Cog):
     @log_errors(log)
     async def clean_interval_orphans(self):
         cnt = Connector.delete_orphaned_intervals()
-
-        Analytics.reminder_deleted(Types.DeleteAction.ORPHAN, count=cnt)
         log.debug(f'deleted {cnt} orphaned interval(s)')
 
 
@@ -305,9 +281,6 @@ class ReminderModule(commands.Cog):
         pending_intvls = Connector.get_pending_intervals(utc_timestamp(now))
 
         for interval in pending_intvls:
-            # must be evaluated before new at is assigned
-            Analytics.reminder_delay(interval, now=now, allowed_delay=2*60)
-            
             interval.at = interval.next_trigger(now)
 
             if interval.at is None:
@@ -322,7 +295,6 @@ class ReminderModule(commands.Cog):
                 log.error(f'interval not delivered, skipping. See exception below')
                 t = (type(e), e, e.__traceback__)
                 log.error(''.join(traceback.format_exception(*t)))
-                Analytics.register_exception(e) # add these to ex counter
 
         self.last_loop = datetime.utcnow()
         sent_in = (self.last_loop-now).total_seconds()
@@ -346,13 +318,10 @@ class ReminderModule(commands.Cog):
                 log.error(f'reminder not delivered, skipping. See exception below')
                 t = (type(e), e, e.__traceback__)
                 log.error(''.join(traceback.format_exception(*t)))
-                Analytics.register_exception(e) # add these to ex counter
 
             # also after an error: a reminder that always fails must not be retried forever
             # (not in a finally: a shutdown while sending must keep the reminder)
             Connector.delete_reminder(reminder._id)
-
-            Analytics.reminder_delay(reminder, now=now, allowed_delay=1*60)
 
 
         sent_in = (datetime.utcnow()-now).total_seconds()
@@ -366,17 +335,6 @@ class ReminderModule(commands.Cog):
         
     
    
-    @tasks.loop(minutes=15)
-    @log_errors(log)
-    async def check_reminder_cnt(self):
-        rems = Connector.get_reminder_cnt()
-        Analytics.reminder_cnt(rems)
-
-    @tasks.loop(minutes=15)
-    @log_errors(log)
-    async def check_interval_cnt(self):
-        intvls = Connector.get_interval_cnt()
-        Analytics.interval_cnt(intvls)
     
 
     @clean_interval_orphans.before_loop
@@ -391,13 +349,6 @@ class ReminderModule(commands.Cog):
     async def check_pending_reminders_before(self):
         await self.client.wait_until_ready()
 
-    @check_reminder_cnt.before_loop
-    async def check_reminder_cnt_before(self):
-        await self.client.wait_until_ready()
-
-    @check_interval_cnt.before_loop
-    async def check_interval_cnt_before(self):
-        await self.client.wait_until_ready()
 
     # =====================
     # commands functions

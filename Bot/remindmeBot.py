@@ -1,6 +1,5 @@
 import os
 import discord
-from discord.ext import tasks
 import logging
 import logging.handlers
 import time
@@ -10,11 +9,8 @@ import uuid
 
 from pathlib import Path
 from discord.ext.help import Help, HelpElement, HelpPage
-from discord.ext.servercount import ServerCount
 
 from lib.Connector import Connector
-from lib.Analytics import Analytics, Types
-from util.loops import log_errors
 from util.consts import Consts
 
 
@@ -40,7 +36,6 @@ logging.getLogger('discord').setLevel(logging.WARNING) # reduce warning for disc
 
 log = logging.getLogger('Remindme')
 log.setLevel(LOG_LEVEL) # own code, all 'Remindme.*' loggers inherit it
-logging.getLogger('ext.servercount').setLevel(LOG_LEVEL)
 
 
 token: str = os.getenv('BOT_TOKEN')
@@ -49,7 +44,8 @@ intents.guilds = True # required for member roles -> permissions
 #intents.reactions = True
 #intents.messages = True
 
-bot: discord.AutoShardedBot = discord.AutoShardedBot(intents=intents)
+# a personal bot runs on a few servers: no sharding needed
+bot: discord.Bot = discord.Bot(intents=intents)
 
 SYNTAX_HELP_PAGE = \
                 'basic example:\n'\
@@ -100,14 +96,12 @@ TIMEZONE_HELP_PAGE = \
 # ###########
 async def log_exception(ctx: discord.ApplicationContext, error: Exception, error_id: str):
     """log the given exception to the local logger
-       and register a datapoint for analytics
 
     Args:
         ctx (discord.ApplicationContext): _description_
         error (Exception): _description_
         error_id (str): _description_
     """
-    Analytics.register_exception(error)
     if isinstance(error, discord.NotFound):
         log.warning('interaction timed out (not found)')
     else:
@@ -130,17 +124,6 @@ async def on_ready():
     config_help()
 
     await bot.change_presence(activity=discord.Game(name='/remindme'))
-    log.debug('starting basic statistics loops')
-
-    if not update_community_count.is_running():
-        update_community_count.start()
-    if not update_experimental_count.is_running():
-        update_experimental_count.start()
-
-
-@bot.event
-async def on_shard_connect(shard_id):
-    log.debug(f'shard {shard_id} connected')
 
 
 
@@ -168,7 +151,6 @@ async def on_application_command_error(ctx: discord.ApplicationContext, error: E
     #     await ctx.send('This command is only to be used on servers')
     # elif isinstance(error, discord.NotFound):
     #     print(''.join(error.args))
-    #     Analytics.register_exception(error)
 
     
     try:
@@ -187,13 +169,9 @@ async def on_error(event_method, *args, **kwargs):
 
 @bot.event
 async def on_guild_remove(guild):
+    # leaving a server deletes its reminders and settings
     del_rem, del_intvl = Connector.delete_guild(guild.id)
-    
-    Analytics.guild_removed()
-    Analytics.reminder_deleted(Types.DeleteAction.KICK, count=del_rem)
-    Analytics.interval_deleted(Types.DeleteAction.KICK, count=del_intvl)
-
-    log.debug(f'removed from guild (total count: {len(bot.guilds)})')
+    log.info(f'removed from guild {guild.id}: deleted {del_rem} reminder(s) and {del_intvl} interval(s)')
 
 
 
@@ -204,35 +182,11 @@ async def on_guild_join(guild):
     # new guilds do not use the legacy mode
     Connector.set_legacy_interval(guild.id, False)
 
-    Analytics.guild_added()
-    guild_cnt = len(bot.guilds)
-    log.info(f'added to guild (total count: {guild_cnt})')
+    log.info(f'added to guild {guild.id} (total count: {len(bot.guilds)})')
 
-    if not guild.system_channel:
-        return
-
-    def is_round_number(x):
-        while x%10 == 0 and x>0:
-            x /= 10
-        if x < 10:
-            return True
-        return False
-    
-    if is_round_number(guild_cnt):
-        log.info('sending celebration embed')
-        eb = discord.Embed(title=f'You\'re the {guild_cnt}th server I\'ve been added to', 
-                        description='Here\'s a cool gif, just for you')
-        eb.set_image(url='https://media.giphy.com/media/kyLYXonQYYfwYDIeZl/giphy.gif')
-        await guild.system_channel.send(embed=eb)
-        
 # #############
 # # Commands
 # ############
-
-def set_tokens():
-    ServerCount.init(bot, 'reminmdeBot (https://github.com/Mayerch1/RemindmeBot)')
-    ServerCount.set_token_dir('tokens')
-
 
 def config_help():
 
@@ -271,48 +225,15 @@ def config_help():
 
 
 
-@tasks.loop(hours=6)
-@log_errors(log)
-async def update_experimental_count():
-    
-    log.debug('updating experimental server count')
-    comm_cnt = Connector.get_experimental_count()
-    Analytics.experimental_count(comm_cnt)
-
-
-@tasks.loop(hours=3)
-@log_errors(log)
-async def update_community_count():
-    log.debug('updating anayltics guild/community count')
-
-    comm_cnt = Connector.get_community_count()
-    Analytics.community_count(comm_cnt)
-    Analytics.guild_cnt(len(bot.guilds))
-
-
-@update_community_count.before_loop
-async def update_community_count_before():
-    await bot.wait_until_ready()
-
-
-@update_experimental_count.before_loop
-async def update_experimental_count_before():
-    await bot.wait_until_ready()
-
-
-
 def main():
     Connector.init()
-    Analytics.init()
 
     for filename in os.listdir(Path(__file__).parent / 'cogs'):
         if filename.endswith('.py'):
             bot.load_extension(f'cogs.{filename[:-3]}')
 
     bot.load_extension('discord.ext.help.help')
-    bot.load_extension('discord.ext.servercount.servercount')
 
-    set_tokens()
     bot.run(token)
 
 

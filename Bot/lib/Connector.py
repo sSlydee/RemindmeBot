@@ -364,16 +364,6 @@ class Connector:
 
 
     @staticmethod
-    def get_reminder_cnt():
-        return Connector.db.reminders.count_documents({})
-
-
-    @staticmethod
-    def get_interval_cnt():
-        return Connector.db.intervals.count_documents({})
-
-
-    @staticmethod
     def get_reminder_by_id(reminder_id):
 
         reminder = Connector.db.reminders.find_one({'_id': reminder_id})

@@ -15,13 +15,7 @@ def log_errors(log: logging.Logger):
         async def wrapper(*args, **kwargs):
             try:
                 return await func(*args, **kwargs)
-            except Exception as e:
+            except Exception:
                 log.exception(f'{func.__name__} failed, retrying on the next iteration')
-                try:
-                    # imported here: lib.Analytics has a circular import with lib.Reminder
-                    from lib.Analytics import Analytics
-                    Analytics.register_exception(e)
-                except Exception:
-                    log.exception('failed to record the exception in analytics')
         return wrapper
     return decorator

@@ -28,7 +28,6 @@ class IntervalTimezoneTest(unittest.TestCase):
             patch.object(connector, 'delete_interval', return_value=True),
             patch.object(connector, 'update_interval_rules'),
             patch.object(connector, 'update_interval_at'),
-            patch('lib.ReminderRepeater.Analytics'),
         ]
         for pt in patches:
             pt.start()

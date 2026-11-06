@@ -3,7 +3,6 @@ import discord
 
 from util.consts import Consts
 from lib.Connector import Connector
-from lib.Analytics import Analytics, Types
 from lib.CommunitySettings import CommunitySettings, CommunityAction
 
 def check_user_permission(guild_id: int, user_roles: list, required_perms:CommunitySettings=None, active_settings:CommunitySettings=None, member:discord.Member=None) -> bool:
@@ -49,7 +48,6 @@ def check_user_permission(guild_id: int, user_roles: list, required_perms:Commun
         (required_perms.foreign and active_settings.restrict_foreign) or\
         (required_perms.settings):
 
-        Analytics.command_denied()
         return False
     else:
         return True
