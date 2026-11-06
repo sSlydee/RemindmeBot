@@ -199,7 +199,7 @@ class Analytics:
 
     @staticmethod
     def init():
-        host = '0.0.0.0'
+        host = '127.0.0.1'  # local patch: metrics not exposed
         port = int(os.getenv('PROMETHEUS_PORT'))
 
         _thread.start_new_thread(Analytics._waitress_thread, ('flask server', Analytics.app, host, port))
