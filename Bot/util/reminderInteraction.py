@@ -285,10 +285,14 @@ class EditModal(discord.ui.Modal):
             style=discord.InputTextStyle.singleline
         ))
 
+        self.prefilled_at = None
         if not isinstance(self.reminder, IntervalReminder):
+            # local time with its offset (e.g. +01:00), without microseconds
+            local_at = self.reminder.at.replace(tzinfo=tz.UTC).astimezone(tz=tz.gettz(tz_str))
+            self.prefilled_at = local_at.replace(microsecond=0).isoformat()
             self.add_item(discord.ui.InputText(
-                label='Remind at (iso)',
-                value=self.reminder.at.replace(tzinfo=tz.UTC).astimezone(tz=tz.gettz(tz_str)).isoformat(), # add +02:00 for server timezone
+                label='Remind at (date or ISO timestamp)',
+                value=self.prefilled_at,
                 required=True,
                 style=discord.InputTextStyle.singleline
                 )
@@ -313,7 +317,8 @@ class EditModal(discord.ui.Modal):
         new_imgurl = self.children[2].value
         new_at = self.children[3].value
         
-        if new_title != self.reminder.title:
+        new_title = new_title or None
+        if new_title != (self.reminder.title or None):
             self.reminder.title = new_title
             Connector.set_reminder_title(self.reminder._id, self.reminder.title)
 
@@ -321,44 +326,55 @@ class EditModal(discord.ui.Modal):
             self.reminder.msg = new_msg
             Connector.set_reminder_message(self.reminder._id, self.reminder.msg)
 
-        if new_imgurl != self.reminder.img_url:
-            # check if the given url is actually valid
-            try:
-                success = validators.url(new_imgurl)
-            except:
-                success = False
-                pass
-            if success:
-                self.reminder.img_url = new_imgurl
-                Connector.set_reminder_img_url(self.reminder._id, self.reminder.img_url)
+        new_imgurl = (new_imgurl or '').strip()
+        if new_imgurl != (self.reminder.img_url or ''):
+            if not new_imgurl:
+                # an empty field removes the image
+                self.reminder.img_url = None
+                Connector.set_reminder_img_url(self.reminder._id, None)
+            else:
+                # check if the given url is actually valid
+                try:
+                    success = validators.url(new_imgurl)
+                except Exception:
+                    success = False
+                if success:
+                    self.reminder.img_url = new_imgurl
+                    Connector.set_reminder_img_url(self.reminder._id, self.reminder.img_url)
+                else:
+                    info += f'Didn\'t change the image: `{new_imgurl[:100]}` is not a valid URL.\n'
 
 
         if not isinstance(self.reminder, IntervalReminder):
-            # check if valid iso-date was added
-            try:
-                parsed_at = datetime.strptime(new_at, '%Y-%m-%dT%H:%M:%S.%f')
-            except ValueError:
-                try:
-                    parsed_at = datetime.strptime(new_at, '%Y-%m-%dT%H:%M:%S.%f%z')
-                except ValueError:
-                    info += 'Didn\'t change the reminder date. The date is not an ISO-timestamp.\n'
-                    # TODO: show parsing error
-                    parsed_at = None
+            new_at = (new_at or '').strip()
+            # only parse the date when the user changed it,
+            # the pre-filled value is the current due date
+            if new_at and new_at != self.prefilled_at:
+                utcnow = datetime.utcnow()
+                # same parser as /remindme: ISO timestamps (without offset: server timezone),
+                # relative times and natural dates
+                parsed_at, parse_info = lib.input_parser.parse(new_at, utcnow, self.tz)
 
-            if parsed_at:
-                new_at_utc = parsed_at.astimezone(tz=tz.UTC).replace(tzinfo=None) if parsed_at.tzinfo else parsed_at
-                self.reminder.at = new_at_utc
-                Connector.update_reminder_at(self.reminder)
+                if not isinstance(parsed_at, datetime) or parsed_at == utcnow:
+                    info += f'Didn\'t change the reminder date: couldn\'t read `{new_at[:100]}`.\n'
+                    if isinstance(parsed_at, str):
+                        info += 'Repeating dates must be added with `Set Interval`.\n'
+                    elif parse_info:
+                        info += f'```{parse_info}```\n'
+                elif parsed_at <= utcnow:
+                    info += 'Didn\'t change the reminder date: it must be in the future.\n'
+                else:
+                    self.reminder.at = parsed_at
+                    Connector.update_reminder_at(self.reminder)
         else:
             if new_at:
-                # TODO: check if placeholder is assigned to new_at or if None
                 info += 'The `Interval` attribute must be edited with `Edit Interval`.\n'
 
 
         if self.custom_callback:
             await self.custom_callback(interaction)
         else:
-            await interaction.response.send_message(info+'Use `Set/Edit Interval` for better date parsing', ephemeral=True)
+            await interaction.response.send_message(info or 'Reminder updated', ephemeral=True)
 
         self.stop()
 
