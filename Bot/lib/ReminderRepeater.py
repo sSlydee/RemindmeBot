@@ -8,6 +8,34 @@ from lib.Reminder import Reminder, IntervalReminder
 
 
 #====================
+# Time frames
+#====================
+
+# Interval rules (DTSTART, first_at, rdates, exdates) are naive datetimes in
+# the server's local time, unless the server uses legacy (UTC) intervals.
+# Reminder.at is always naive UTC. Convert at every boundary between the two.
+
+def instance_id_of(reminder):
+    return reminder.g_id if reminder.g_id else reminder.author
+
+
+def utc_to_rule_frame(utc_dt: datetime, instance_id) -> datetime:
+    """convert a naive UTC datetime into the frame used by interval rules"""
+    if utc_dt is None or Connector.is_legacy_interval(instance_id):
+        return utc_dt
+    local_tz = tz.gettz(Connector.get_timezone(instance_id))
+    return utc_dt.replace(tzinfo=tz.UTC).astimezone(local_tz).replace(tzinfo=None)
+
+
+def rule_frame_to_utc(rule_dt: datetime, instance_id) -> datetime:
+    """convert a naive datetime of the interval rule frame back to naive UTC"""
+    if rule_dt is None or Connector.is_legacy_interval(instance_id):
+        return rule_dt
+    local_tz = tz.gettz(Connector.get_timezone(instance_id))
+    return rule_dt.replace(tzinfo=local_tz).astimezone(tz.UTC).replace(tzinfo=None)
+
+
+#====================
 # Transformation Ops
 #====================
 
@@ -29,7 +57,8 @@ def _reminder_to_interval(reminder: Reminder):
     reminder = IntervalReminder(old_reminder._to_json())
 
     # update the occurrence to optimise database fetches
-    reminder.first_at = old_reminder.at
+    # first_at lives in the rule frame (local time), at stays UTC
+    reminder.first_at = utc_to_rule_frame(old_reminder.at, instance_id_of(old_reminder))
     # keep reminder 'at' at old val for now
 
     new_id = Connector.add_interval(reminder)
@@ -46,7 +75,7 @@ def _interval_to_reminder(reminder: IntervalReminder):
 
     old_reminder = reminder
     reminder = Reminder(reminder._to_json())
-    reminder.at = old_reminder.first_at
+    reminder.at = rule_frame_to_utc(old_reminder.first_at, instance_id_of(old_reminder))
 
     new_id = Connector.add_reminder(reminder)
     Connector.delete_interval(old_reminder._id)
