@@ -549,7 +549,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         modal = RuleModal(field='Enter an exclusion date (fuzzy or iso)',
                             title='Add a single exclusion date',
                             custom_callback=self.date_callback,
-                            mode=RuleMode.DATE_ADD)
+                            mode=RuleMode.DATE_EX_ADD)
         await interaction.response.send_modal(modal)
 
   
