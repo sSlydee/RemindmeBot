@@ -1,11 +1,25 @@
-from dis import dis
 import discord # for reminder
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil import tz
 import dateutil.rrule as rr
 
 import lib.input_parser
 import lib.Connector  # KEEP this syntax, circular import
+
+
+# The bot works with naive datetimes in UTC and stores them as unix timestamps.
+# datetime.timestamp()/fromtimestamp() on naive values use the *machine* timezone,
+# so always attach UTC explicitly: the stored values must not depend on the host.
+
+def utc_timestamp(naive_utc: datetime) -> float:
+    """unix timestamp of a naive UTC datetime"""
+    return naive_utc.replace(tzinfo=timezone.utc).timestamp()
+
+
+def utc_from_timestamp(timestamp: float) -> datetime:
+    """naive UTC datetime of a unix timestamp"""
+    return datetime.fromtimestamp(timestamp, timezone.utc).replace(tzinfo=None)
+
 
 class Reminder:
 
@@ -40,11 +54,11 @@ class Reminder:
 
         self.at = json.get('at', None)
         if self.at:
-            self.at = datetime.fromtimestamp(self.at)
+            self.at = utc_from_timestamp(self.at)
 
         self.created_at = json.get('created_at', None)
         if self.created_at:
-            self.created_at = datetime.fromtimestamp(self.created_at)
+            self.created_at = utc_from_timestamp(self.created_at)
 
 
     def __eq__(self, other):
@@ -86,10 +100,10 @@ class Reminder:
         d['last_msg_id'] = str(self.last_msg_id) if self.last_msg_id else None
         
         if self.created_at:
-            d['created_at'] = datetime.timestamp(self.created_at)
+            d['created_at'] = utc_timestamp(self.created_at)
 
         if self.at:
-            d['at'] = datetime.timestamp(self.at)
+            d['at'] = utc_timestamp(self.at)
         else:
             d['at'] = None
 
@@ -195,7 +209,8 @@ class Reminder:
             else:
                 at_str = self.created_at.replace(tzinfo=tz.UTC).astimezone(tz.gettz(tz_str)).strftime('%Y/%m/%d %H:%M %Z')
 
-            eb.timestamp = self.created_at
+            # a naive value would be read in the machine timezone
+            eb.timestamp = self.created_at.replace(tzinfo=tz.UTC)
             eb.set_footer(text='created: ')
 
         if author:
@@ -340,7 +355,8 @@ class IntervalReminder(Reminder):
 
         self.first_at = json.get('first_at', None)
         if self.first_at:
-            self.first_at = datetime.fromtimestamp(self.first_at)
+            # first_at is in the rule frame (server local time), stored like the UTC values
+            self.first_at = utc_from_timestamp(self.first_at)
 
         self.exdates = json.get('exdates', [])
         self.exrules = json.get('exrules', [])
@@ -357,7 +373,7 @@ class IntervalReminder(Reminder):
         d['rrules'] = self.rrules
 
         if self.first_at:
-            d['first_at'] = datetime.timestamp(self.first_at)
+            d['first_at'] = utc_timestamp(self.first_at)
 
         return d
 

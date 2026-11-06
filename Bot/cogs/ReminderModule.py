@@ -15,7 +15,7 @@ import discord
 from discord.ext import commands, tasks
 
 from lib.Connector import Connector
-from lib.Reminder import Reminder, IntervalReminder
+from lib.Reminder import Reminder, IntervalReminder, utc_timestamp
 import lib.input_parser
 import lib.ReminderRepeater
 import util.interaction
@@ -297,7 +297,7 @@ class ReminderModule(commands.Cog):
     async def check_pending_intervals(self):   
         now = datetime.utcnow()
         
-        pending_intvls = Connector.get_pending_intervals(now.timestamp())
+        pending_intvls = Connector.get_pending_intervals(utc_timestamp(now))
 
         for interval in pending_intvls:
             # must be evaluated before new at is assigned
@@ -332,7 +332,7 @@ class ReminderModule(commands.Cog):
 
         # delete each reminder only after it was handled:
         # a crash or restart while sending must not lose the pending ones
-        pending_rems = Connector.get_elapsed_reminders(now.timestamp())
+        pending_rems = Connector.get_elapsed_reminders(utc_timestamp(now))
         
         for reminder in pending_rems:
             try:
