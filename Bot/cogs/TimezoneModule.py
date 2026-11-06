@@ -19,6 +19,7 @@ import util.interaction
 from lib.CommunitySettings import CommunityAction
 from lib.Connector import Connector
 from lib.Analytics import Analytics
+from util.consts import Consts
 
 
 log = logging.getLogger('Remindme.Timezones')
@@ -215,7 +216,12 @@ class TimezoneModule(discord.Cog):
         instance_id = ctx.guild.id if ctx.guild else ctx.author.id
         roles = ctx.author.roles if isinstance(ctx.author, discord.member.Member) else []
 
-        if not lib.permissions.check_user_permission(instance_id, user_roles=roles, required_perms=CommunityAction(settings=True)):
+        if not lib.permissions.check_user_permission(instance_id, user_roles=roles, required_perms=CommunityAction(settings=True), member=ctx.author):
+            eb = discord.Embed(title='Missing Permissions',
+                               description='You do not have permission to change the timezone of this server.\n'\
+                                           'Only moderators (or members with `Manage Server` when community mode is disabled) can do so.',
+                               color=Consts.col_err)
+            await ctx.respond(embed=eb, ephemeral=True)
             return
 
         await self.set_timezone(ctx, instance_id, new_timezone)

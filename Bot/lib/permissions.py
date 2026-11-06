@@ -6,7 +6,7 @@ from lib.Connector import Connector
 from lib.Analytics import Analytics, Types
 from lib.CommunitySettings import CommunitySettings, CommunityAction
 
-def check_user_permission(guild_id: int, user_roles: list, required_perms:CommunitySettings=None, active_settings:CommunitySettings=None) -> bool:
+def check_user_permission(guild_id: int, user_roles: list, required_perms:CommunitySettings=None, active_settings:CommunitySettings=None, member:discord.Member=None) -> bool:
     """check if the user holds the required community privilegeds
 
     Args:
@@ -14,6 +14,7 @@ def check_user_permission(guild_id: int, user_roles: list, required_perms:Commun
         user_roles (list): guild roles of the user
         required_perms (CommunitySettings, optional): required permissions. Default only checks for Mod-only mode.
         active_settings (CommunitySettings, optional): current settings, is fetched from DB if None
+        member (discord.Member, optional): the user, used to check the server permissions for settings changes
 
     Returns:
         bool: True if user has permissions, False if permissions are denied
@@ -22,6 +23,11 @@ def check_user_permission(guild_id: int, user_roles: list, required_perms:Commun
     # if comm mode is disabled, all settings/mods are ignored
     community_mode = Connector.get_community_mode(guild_id)
     if community_mode == Connector.CommunityMode.DISABLED:
+        # but server settings still require 'Manage Server'
+        # otherwise any member could change the timezone or enable community mode
+        # and make themselves moderator
+        if required_perms is not None and required_perms.settings and isinstance(member, discord.Member):
+            return member.guild_permissions.manage_guild
         return True
     
     # moderators can do everything

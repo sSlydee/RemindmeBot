@@ -226,7 +226,7 @@ class ExperimentalSettings(SettingsPageTemplate):
             author_roles = []
 
         action = CommunityAction(settings=True)
-        self.forbidden = not lib.permissions.check_user_permission(self.scope.instance_id, author_roles, required_perms=action)
+        self.forbidden = not lib.permissions.check_user_permission(self.scope.instance_id, author_roles, required_perms=action, member=author)
 
         if scope.is_private or (self.forbidden and not author.guild_permissions.administrator):
             self.disable_all()
@@ -256,7 +256,7 @@ class ExperimentalSettings(SettingsPageTemplate):
         
         if self.forbidden:
             eb.color = Consts.col_err
-            eb.description = 'You do not have permissions to modify the community settings of this server. Only moderators can do so.'
+            eb.description = 'You do not have permissions to modify the settings of this server. Only moderators (or members with `Manage Server` when community mode is disabled) can do so.'
 
         return eb
     
@@ -326,7 +326,7 @@ class CommunitySettingsView(SettingsPageTemplate):
 
 
         action = CommunityAction(settings=True)
-        self.forbidden = not lib.permissions.check_user_permission(self.scope.instance_id, author_roles, required_perms=action)
+        self.forbidden = not lib.permissions.check_user_permission(self.scope.instance_id, author_roles, required_perms=action, member=self.author)
 
         if scope.is_private or (self.forbidden and not self.author.guild_permissions.administrator):
             self.disable_all()
@@ -359,7 +359,7 @@ class CommunitySettingsView(SettingsPageTemplate):
 
         if self.forbidden:
             eb.color = Consts.col_err
-            eb.description = 'You do not have permissions to modify the community settings of this server. Only moderators can do so.'
+            eb.description = 'You do not have permissions to modify the settings of this server. Only moderators (or members with `Manage Server` when community mode is disabled) can do so.'
 
         return eb
 
@@ -421,7 +421,7 @@ class BaseSettings(SettingsPageTemplate):
             author_roles = []
 
         action = CommunityAction(settings=True)
-        self.forbidden = not lib.permissions.check_user_permission(self.scope.instance_id, author_roles, required_perms=action)
+        self.forbidden = not lib.permissions.check_user_permission(self.scope.instance_id, author_roles, required_perms=action, member=author)
 
         if scope.is_private or (self.forbidden and not author.guild_permissions.administrator):
             self.disable_all()
@@ -515,7 +515,7 @@ class BaseSettings(SettingsPageTemplate):
 
         if self.forbidden:
             eb.color = Consts.col_err
-            eb.description = 'You do not have permissions to modify the community settings of this server. Only moderators can do so.'
+            eb.description = 'You do not have permissions to modify the settings of this server. Only moderators (or members with `Manage Server` when community mode is disabled) can do so.'
 
         return eb
     
