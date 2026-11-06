@@ -203,16 +203,27 @@ class SnoozeView(CustomView):
         snoozed = Reminder(self.reminder._to_json())
         user_name = interaction.user.display_name
 
+        utcnow = datetime.utcnow()
         snoozed._id = None
-        snoozed.created_at = datetime.utcnow()
-        snoozed.msg = (snoozed.msg+f' (snoozed)')[:25]
-        snoozed.at = self.reminder.at + timedelta(seconds=delay_seconds)
+        snoozed.created_at = utcnow
+        if not snoozed.msg.endswith(' (snoozed)'):
+            snoozed.msg += ' (snoozed)'
+        # count from the click, not from the due date:
+        # an interval's .at already holds its next occurrence
+        # and a late click would put the snooze in the past
+        snoozed.at = utcnow + timedelta(seconds=delay_seconds)
 
         if interaction.user.id != self.reminder.author:
             # convert reminder into DM reminder
             # if anyone but author pressed snooze button
+            # and deliver it to that user, not to the original target
             snoozed.g_id = None
+            snoozed.ch_id = None
+            snoozed.ch_name = 'DM'
             snoozed.author = interaction.user.id
+            snoozed.target = interaction.user.id
+            snoozed.target_name = interaction.user.mention
+            snoozed.target_mention = interaction.user.mention
             Connector.add_reminder(snoozed)
             await interaction.response.send_message(f'The snoozed reminder will be delivered to your DMs, as you are not the original author. Make sure I\'m allowed to message you.', ephemeral=True)
 
