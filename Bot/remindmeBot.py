@@ -2,6 +2,8 @@ import os
 import discord
 from discord.ext import tasks
 import logging
+import logging.handlers
+import time
 import traceback
 import sys
 import uuid
@@ -16,29 +18,29 @@ from util.loops import log_errors
 from util.consts import Consts
 
 
-logging.basicConfig(level=logging.INFO) # general 3rd party
+# Logging
+# - LOG_FILE (default ./logs/bot.log): everything, rotated at 5 MB, 5 old files kept
+# - stderr: warnings and errors only (journald / systemd keeps them)
+# - LOG_LEVEL (default INFO) for the bot's own loggers, DEBUG for details
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
+LOG_FILE = os.getenv('LOG_FILE', './logs/bot.log')
 
-handler = logging.FileHandler(filename='./logs/discord.log', encoding='utf-8', mode='w')
-handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+_formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s', datefmt='%Y-%m-%dT%H:%M:%SZ')
+_formatter.converter = time.gmtime  # log times in UTC, whatever the machine timezone
 
+_file_handler = logging.handlers.RotatingFileHandler(LOG_FILE, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
+_file_handler.setFormatter(_formatter)
+
+_stderr_handler = logging.StreamHandler()
+_stderr_handler.setLevel(logging.WARNING)
+_stderr_handler.setFormatter(_formatter)
+
+logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _stderr_handler]) # general 3rd party
 logging.getLogger('discord').setLevel(logging.WARNING) # reduce warning for discord lib
 
-logging.getLogger('Remindme.Analytics').setLevel(logging.DEBUG)
-logging.getLogger('Remindme.Timezones').setLevel(logging.DEBUG)
-logging.getLogger('Remindme.Listing').setLevel(logging.DEBUG)
-logging.getLogger('Remindme.Creation').setLevel(logging.DEBUG)
-logging.getLogger('Remindme.Core').setLevel(logging.DEBUG)
-logging.getLogger('Remindme.Admin').setLevel(logging.DEBUG)
-logging.getLogger('Remindme.Settings').setLevel(logging.DEBUG)
-
-# tmp verbosity
-logging.getLogger('ext.servercount').setLevel(logging.DEBUG)
-
 log = logging.getLogger('Remindme')
-log.setLevel(logging.DEBUG) # own code
-
-# root logger inherits handler to all other loggers
-logging.getLogger().addHandler(handler)
+log.setLevel(LOG_LEVEL) # own code, all 'Remindme.*' loggers inherit it
+logging.getLogger('ext.servercount').setLevel(LOG_LEVEL)
 
 
 token: str = os.getenv('BOT_TOKEN')
