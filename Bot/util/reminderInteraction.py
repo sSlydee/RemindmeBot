@@ -3,7 +3,6 @@ import lib.timeutil as timeutil
 from enum import Enum
 from datetime import datetime, timedelta
 from dateutil import tz
-from unidecode import unidecode
 import validators
 import logging
 
@@ -32,189 +31,116 @@ class STM():
 
 
 class ReminderChannelEdit(util.interaction.CustomView):
+    # channels a reminder can be posted in (forums and media channels only accept threads)
+    CHANNEL_TYPES = [
+        discord.ChannelType.text,
+        discord.ChannelType.voice,
+        discord.ChannelType.news,
+        discord.ChannelType.stage_voice,
+        discord.ChannelType.public_thread,
+        discord.ChannelType.private_thread,
+        discord.ChannelType.news_thread,
+    ]
+
     def __init__(self, reminder: Reminder, stm: STM, message, *args, **kwargs):
         super().__init__(message, *args, **kwargs)
         self.owner_id = stm.ctx.author.id
         self.reminder = reminder
         self.stm = stm
-
-        self.select_btn.disabled=True
-        self.drop_down:discord.ui.Select = None
-        self.dd_is_category = False  # is True when drop down holds categories, False on text channels
-        self.drop_down_cat=None  # id of selected category, if dd holds text channels, on category mode: don't care
-
-        self.update_category_dropdown()
         self.open_interaction = None
+
+        # Discord's own channel picker: searchable, lists every channel and thread,
+        # starts on the current channel of the reminder
+        defaults = None
+        if reminder.ch_id:
+            defaults = [discord.SelectDefaultValue(id=reminder.ch_id, type=discord.SelectDefaultValueType.channel)]
+        self.drop_down = discord.ui.Select(
+            select_type=discord.ComponentType.channel_select,
+            channel_types=ReminderChannelEdit.CHANNEL_TYPES,
+            placeholder='Select the channel for this reminder',
+            min_values=1,
+            max_values=1,
+            default_values=defaults,
+            row=0
+        )
+        self.drop_down.callback = self.channel_selected_callback
+        self.add_item(self.drop_down)
 
 
     def get_embed(self) -> discord.Embed:
-        return self.reminder.get_info_embed(self.stm.tz_str)
+        eb = self.reminder.get_info_embed(self.stm.tz_str)
+        eb.title = 'Select a new channel'
+        return eb
 
 
-    async def category_selected_callback(self, interaction: discord.Interaction):
-        # only execute when called from category type dd
-        # NOP when called from text-channel populated DD
-        if self.dd_is_category:
-            cat_id = interaction.data['values'][0] # min/max selection is 1
-            self.drop_down_cat = int(cat_id)
-            await self.update_channel_dropdown(int(cat_id), interaction)
+    async def _check_channel(self, new_ch) -> discord.Embed:
+        """error embed if the reminder can't be delivered into new_ch, None if it can"""
+        if not new_ch:
+            return discord.Embed(title='Failed to edit Reminder',
+                                 description='Couldn\'t resolve the selected channel. Ensure that I have sufficient permissions.',
+                                 color=Consts.col_err)
+
+        r_type = Connector.get_reminder_type(self.stm.scope.instance_id)
+        if r_type == Connector.ReminderType.TEXT_ONLY:
+            req_perms = discord.Permissions(send_messages=True)
+            has_perms = util.verboseErrors.VerboseErrors.has_permission(req_perms, new_ch)
         else:
+            has_perms = util.verboseErrors.VerboseErrors.can_send_messages(new_ch)
+
+        if not has_perms:
+            return discord.Embed(title='Failed to set new Channel',
+                                 description=f'I am missing permissions to send messages in `{new_ch.name}`',
+                                 color=Consts.col_err)
+        return None
+
+
+    async def channel_selected_callback(self, interaction: discord.Interaction):
+        selected = self.drop_down.values or []
+        if not selected:
             await interaction.response.defer()
+            return
 
+        new_ch_id = selected[0].id
+        try:
+            # fetch the full channel: the selection only carries partial data
+            new_ch = await self.stm.ctx.bot.fetch_channel(new_ch_id)
+        except (discord.errors.Forbidden, discord.errors.NotFound):
+            new_ch = None
 
-    async def update_channel_dropdown(self, category_id: int, interaction: discord.Interaction):
-
-        dd_search = [x for x in self.children if isinstance(x, discord.ui.Select)]
-        dropDown_instance = dd_search[0] if dd_search else None
-
-        shown_channels = []
-
-        if self.drop_down_cat == -1:
-            shown_channels = list(filter(lambda ch: (isinstance(ch, discord.TextChannel) or isinstance(ch, discord.VoiceChannel)) and ch.category_id is None, self.stm.ctx.guild.channels))
-        else:
-            # limit to 25 entries
-            shown_channels = list(filter(lambda ch: (isinstance(ch, discord.TextChannel) or isinstance(ch, discord.VoiceChannel)) and ch.category_id is not None and ch.category_id==self.drop_down_cat, self.stm.ctx.guild.channels))[0:25]
-
-        rule_options = [discord.SelectOption(
-                    label=(('#️⃣ ' if isinstance(c, discord.TextChannel) else '🔉 ') + unidecode(c.name)[:23]) or '*unknown channel name*',
-                    value=str(c.id),
-                    default=(c.id==self.reminder.ch_id)) for c in shown_channels]
-        
-        # delet old dropdown
-        #self.children.remove(dropDown_instance)
-        dropDown_instance.placeholder = 'Select a text-channel'
-        if not rule_options:
-            dropDown_instance.options = [
-                discord.SelectOption(
-                    label='*No channels found*',
-                    value='-1',
-                    default=False
-                )
-            ]
-            self.select_btn.disabled = True # no items to be selected, user needs to cancel
-        else:
-            
-            dropDown_instance.options = []
-            for opt in rule_options:
-                dropDown_instance.append_option(opt)
-            self.select_btn.disabled = False
-        
-        self.dd_is_category = False
-        await interaction.response.edit_message(view=self)
-
-
-    def update_category_dropdown(self):
-        # show only the first 25 categories
-        cat_list = list(filter(lambda ch: isinstance(ch, discord.CategoryChannel), self.stm.ctx.guild.channels))[0:24]
-        rule_options = [
-                discord.SelectOption(
-                    label='No category',
-                    value=str(-1),
-                    default=False
-                )
-            ]
-        rule_options.extend([discord.SelectOption(
-                            label=unidecode(c.name)[:25] or '*unknown category name*',
-                            value=str(c.id),
-                            default=False) for c in cat_list])
-
-
-        self.drop_down = discord.ui.Select(
-                placeholder='Select a category',
-                min_values=1,
-                max_values=1,
-                options=rule_options,
-                row=1
-            )
-        self.drop_down.callback = self.category_selected_callback
-        #self.drop_down.callback = self.drop_callback
-        self.select_btn.disabled = True # if items in list, enable select btn
-        self.add_item(self.drop_down)
-        
-        self.dd_is_category = True
-
-
-    @discord.ui.button(label='Select', style=discord.ButtonStyle.green, row=2)
-    async def select_btn(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        embed=None
-        view=None
-
-
-        if self.drop_down.values:
-            new_ch_id = int(self.drop_down.values[0])
-
-            try:
-                new_ch = await self.stm.ctx.bot.fetch_channel(new_ch_id)
-            except discord.errors.Forbidden:
-                new_ch = None
-
-            
-
-            err_eb = None
-            if not new_ch:
-                err_eb = discord.Embed(title='Failed to edit Reminder',
-                                description='Couldn\'t resolve the selected channel. Ensure that I have sufficient permissions.')
-            elif isinstance(new_ch, discord.CategoryChannel):
-                err_eb = discord.Embed(title='Failed to edit Reminder',
-                                description='You must select a Voice- or Text- Channel')
-            else:
-                r_type = Connector.get_reminder_type(self.stm.scope.instance_id)
-                if r_type == Connector.ReminderType.TEXT_ONLY:
-                    req_perms = discord.Permissions(send_messages=True)
-                    has_perms = util.verboseErrors.VerboseErrors.has_permission(req_perms, new_ch)
-                else:
-                    has_perms = util.verboseErrors.VerboseErrors.can_send_messages(new_ch)
-
-                if not has_perms:
-                    # no permissions
-                    err_eb = discord.Embed(title='Failed to set new Channel',
-                                            description='Missing permissions in the new channel',
-                                            color=Consts.col_err)
-            
-            if err_eb:
-                view = util.interaction.AckView(dangerous_action=True)
-                await interaction.response.edit_message(embed=err_eb, view=view)
-                await view.wait()
-                
-            else:
-                view = util.interaction.ConfirmDenyView()
-                eb = discord.Embed(title='New Notification Channel',
-                                    description=f'Do you want to deliver this reminder to `{new_ch.name}`')
-
-                await interaction.response.edit_message(embed=eb, view=view)
-                await view.wait()
-
-                if view.value:
-                    # store the channel change
-                    Connector.set_reminder_channel(self.reminder._id, new_ch_id, new_ch.name)
-                    # update local reminder obj
-                    self.reminder.ch_id = new_ch_id
-
-        else:
-            log.error('channel dropdown had an empty selection')
+        err_eb = await self._check_channel(new_ch)
+        if err_eb:
             view = util.interaction.AckView(dangerous_action=True)
-            embed = discord.Embed(title='Reminder Channel not changed',
-                                    description='You need to set the dropdown to a *different* existing channel',
-                                    color=Consts.col_warn)
-            await interaction.response.edit_message(embed=embed, view=view)
+            await interaction.response.edit_message(embed=err_eb, view=view)
             await view.wait()
-  
+            # back to the channel picker
+            await interaction.edit_original_response(embed=self.get_embed(), view=self)
+            return
 
-        # go back to normal view
-        self.disable_all()
-        await interaction.edit_original_response(view=self)
-        # self.stop()
+        view = util.interaction.ConfirmDenyView()
+        eb = discord.Embed(title='New Notification Channel',
+                           description=f'Do you want to deliver this reminder to `{new_ch.name}`?')
+        await interaction.response.edit_message(embed=eb, view=view)
+        await view.wait()
 
-            
+        if view.value:
+            # store the channel change (same 25 char limit as on creation)
+            Connector.set_reminder_channel(self.reminder._id, new_ch_id, new_ch.name[0:25])
+            self.reminder.ch_id = new_ch_id
+            self.reminder.ch_name = new_ch.name[0:25]
+            # done: the caller shows the reminder again
+            self.stop()
+        else:
+            # back to the channel picker
+            await interaction.edit_original_response(embed=self.get_embed(), view=self)
 
 
-    @discord.ui.button(label='Cancel', style=discord.ButtonStyle.danger, row=2)
-    async def cnacel_btn(self, button:  discord.ui.Button, interaction: discord.Interaction):
+    @discord.ui.button(label='Cancel', style=discord.ButtonStyle.danger, row=1)
+    async def cancel_btn(self, button:  discord.ui.Button, interaction: discord.Interaction):
         self.disable_all()
         self.open_interaction = interaction
-        self.stop() # this will give back controll to the list menu
+        self.stop() # this will give back controll to the edit menu
 
-    
+
 
 class RuleMode(Enum):
     RRULE_ADD=0
@@ -777,12 +703,18 @@ class ReminderEditView(util.interaction.CustomView):
         eb = view.get_embed()
 
         await interaction.response.edit_message(embed=eb, view=view)
-        await view.wait()
+        timed_out = await view.wait()
+        if timed_out:
+            return
 
         # go back to normal view
+        eb = self.get_embed()
         if view.open_interaction:
-            eb = self.get_embed()
+            # 'Cancel' pressed: answer that click
             await view.open_interaction.response.edit_message(embed=eb, view=self)
+        else:
+            # channel changed: the confirmation click was already answered
+            await interaction.edit_original_response(embed=eb, view=self)
 
 
 
