@@ -210,7 +210,7 @@ class ReminderCreation(commands.Cog):
             # interval rules live in the local time of the server/user
             dtstart = utcnow.replace(tzinfo=tz.UTC).astimezone(tz.gettz(tz_str)).replace(tzinfo=None)
 
-            rrule, info = lib.input_parser.rrule_normalize(remind_at, dtstart=dtstart, instance_id=instance_id)
+            rrule, info = lib.input_parser.rrule_normalize(remind_at, dtstart=dtstart, tz_str=tz_str)
             if not rrule:
                 if info != '':
                     out_str = f'```Parsing hints:\n{info}```\n'

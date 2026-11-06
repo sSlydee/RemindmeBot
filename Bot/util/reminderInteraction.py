@@ -358,7 +358,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             dtstart = lib.ReminderRepeater.utc_to_rule_frame(self.reminder.at, lib.ReminderRepeater.instance_id_of(self.reminder))
 
         rrule_input = user_input.lower()
-        rrule, error = lib.input_parser.rrule_normalize(rrule_input, dtstart, self.stm.scope.instance_id)
+        rule_tz = Connector.get_timezone(lib.ReminderRepeater.instance_id_of(self.reminder))
+        rrule, error = lib.input_parser.rrule_normalize(rrule_input, dtstart, rule_tz)
 
         # transfer 
         msg = None

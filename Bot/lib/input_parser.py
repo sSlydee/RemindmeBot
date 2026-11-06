@@ -381,42 +381,83 @@ def rrule_to_english(rrule, now=None):
     return text
 
 
-def rrule_normalize(rrule_str, dtstart, instance_id=None):
-    """generate the rrule of the given rrule string
-       if the string contains timezone based offsets (iso dates)
-       they are converted into the non-timezone aware utc equivalent
+_UNTIL_VALUE_RE = re.compile(r'^(\d{8})(?:T(\d{6}))?(Z)?$', re.IGNORECASE)
 
-    Args:
-        rule_str ([type]): [description]
-        dtstart ([type]): start date of repeat, naive local date of the server/user
+
+def _split_until(rrule_str: str, tz_str: str):
+    """take the UNTIL part out of a rule string
+
+    dateutil refuses an UTC UNTIL (with 'Z', what RRULE generators produce)
+    together with a naive DTSTART, so UNTIL is handled here:
+    - UTC values are converted into the local time of the rule frame
+    - a date without time includes that whole day
 
     Returns:
-        (rule, str): normalized rule (to utc) None on failure, error string
+        (str, datetime): the rule string without UNTIL, and the naive local
+                         UNTIL (None when absent). Unknown formats are left
+                         in the string, for dateutil to report them.
+    """
+    until = None
+    out_lines = []
+    for line in rrule_str.splitlines() or [rrule_str]:
+        name, sep, value = line.partition(':')
+        if not sep:
+            name, value = '', line  # a bare rule like 'FREQ=DAILY;UNTIL=...'
+        elif name.strip().upper() not in ('RRULE', 'EXRULE'):
+            out_lines.append(line)  # DTSTART and other properties
+            continue
+
+        parts = []
+        for part in value.split(';'):
+            key, _, val = part.partition('=')
+            match = _UNTIL_VALUE_RE.match(val.strip()) if key.strip().upper() == 'UNTIL' else None
+            if not match:
+                parts.append(part)
+                continue
+
+            date_part, time_part, utc = match.groups()
+            if time_part:
+                until = datetime.strptime(date_part + time_part, '%Y%m%d%H%M%S')
+                if utc:
+                    until = until.replace(tzinfo=tz.UTC).astimezone(tz.gettz(tz_str)).replace(tzinfo=None)
+            else:
+                until = datetime.strptime(date_part, '%Y%m%d').replace(hour=23, minute=59, second=59)
+
+        value = ';'.join(parts)
+        out_lines.append(f'{name}{sep}{value}' if sep else value)
+
+    return '\n'.join(out_lines), until
+
+
+def rrule_normalize(rrule_str, dtstart, tz_str='UTC'):
+    """generate the rrule of the given rrule string
+       in the rule frame: naive datetimes in the local time of the server/user
+
+    Args:
+        rrule_str (str): the rule, e.g. 'FREQ=WEEKLY;BYDAY=FR;UNTIL=20261231T230000Z'
+        dtstart (datetime): start date of repeat, naive local date of the server/user
+        tz_str (str): timezone of the server/user, used to convert an UTC UNTIL
+
+    Returns:
+        (rule, str): normalized rule, None on failure, error string
     """
 
     if 'interval=0' in rrule_str.lower():
         return (None, 'Please specify an interval greater than 0')
 
+    rule_str, until = _split_until(rrule_str, tz_str)
+
     try:
-        rule = rr.rrulestr(rrule_str, dtstart=dtstart)
+        rule = rr.rrulestr(rule_str, dtstart=dtstart, ignoretz=True)
     except Exception as e:
         return None, str(e)
-
-    until = rule._until
-    until_utc = None
 
     if until:
-        # convert the until date to non-tz aware
-        until_utc = until.astimezone(tz.UTC)
-        until_utc = until_utc.replace(tzinfo=None)
-
-    try:
-        rule = rr.rrulestr(rrule_str, dtstart=dtstart, ignoretz=True)
-    except Exception as e:
-        return None, str(e)
-
-    if until_utc:
-        rule = rule.replace(until=until_utc)
+        try:
+            rule = rule.replace(until=until)
+        except Exception as e:
+            # e.g. UNTIL together with COUNT
+            return None, str(e)
 
 
     norm_str = str(rule).lower()
