@@ -292,7 +292,8 @@ class RoleDropDown(discord.ui.Select):
         self.scope=scope
         self.placeholder='Select the Moderator Role(s)'
         
-        self.guild_roles = guild_roles[::-1][:25] # only show the "highest" 25
+        # only show the "highest" 25, never @everyone: it would make every member a moderator
+        self.guild_roles = [r for r in guild_roles[::-1] if not r.is_default()][:25]
         self.author = author
         self.mod_roles = mod_roles
 
