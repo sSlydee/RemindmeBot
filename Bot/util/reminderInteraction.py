@@ -34,6 +34,7 @@ class STM():
 class ReminderChannelEdit(util.interaction.CustomView):
     def __init__(self, reminder: Reminder, stm: STM, message, *args, **kwargs):
         super().__init__(message, *args, **kwargs)
+        self.owner_id = stm.ctx.author.id
         self.reminder = reminder
         self.stm = stm
 
@@ -365,6 +366,7 @@ class EditModal(discord.ui.Modal):
 class ReminderIntervalAddView(util.interaction.CustomView):
     def __init__(self, reminder: Reminder, stm: STM, message, *args, **kwargs):
         super().__init__(message, *args, **kwargs)
+        self.owner_id = stm.ctx.author.id
 
         self.reminder = reminder
         self.stm = stm
@@ -558,6 +560,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 class ReminderIntervalModifyView(util.interaction.CustomView):
     def __init__(self, reminder: IntervalReminder, stm, message, *args, **kwargs):
         super().__init__(message, *args, **kwargs)
+        self.owner_id = stm.ctx.author.id
 
         self.reminder: IntervalReminder = reminder
         self.stm = stm
@@ -709,6 +712,7 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
 class ReminderEditView(util.interaction.CustomView):
     def __init__(self, reminder: Reminder, stm, message=None, *args, **kwargs):
         super().__init__(message, *args, **kwargs)
+        self.owner_id = stm.ctx.author.id
 
         self.reminder = reminder
         self.stm = stm

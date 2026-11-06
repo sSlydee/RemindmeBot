@@ -22,6 +22,15 @@ class CustomView(discord.ui.View):
         self.value = None
         self.message: Union[discord.Message, discord.Interaction, discord.WebhookMessage] = message
         self.open_interaction = None
+        # when set, only this user can use the components
+        # (needed for views attached to public messages)
+        self.owner_id = None
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if self.owner_id is not None and interaction.user.id != self.owner_id:
+            await interaction.response.send_message('Only the author of this reminder can use these buttons', ephemeral=True)
+            return False
+        return True
 
     def disable_all(self):
         """disable all components in this view

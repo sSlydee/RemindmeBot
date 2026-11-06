@@ -37,6 +37,7 @@ class NewReminderView(util.interaction.CustomView):
         self.stm = stm
         self.info_str = info_str
         self.rrule_override = rrule_override
+        self.owner_id = reminder.author
 
         if isinstance(self.reminder, IntervalReminder):
             self.edit_interval.label='Edit Interval'
