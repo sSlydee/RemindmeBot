@@ -488,12 +488,13 @@ class Help(discord.Cog):
         eb = discord.Embed(title='Test Message', 
                            description='You can safely delete this message')
         try:
-            await ctx.channel.send(embed=eb)
+            # the bot can always delete its own messages: don't leave test messages behind
+            await ctx.channel.send(embed=eb, delete_after=1)
         except discord.Forbidden:
             # failure might still grant text_permission
             text = 'Test Message, *please ignore this*'
             try:
-                await ctx.channel.send(text)
+                await ctx.channel.send(text, delete_after=1)
             except discord.Forbidden:
                 pass  # failure grants no permission
             else:
@@ -509,7 +510,7 @@ class Help(discord.Cog):
         
         dm = await ctx.user.create_dm()
         try:
-            await dm.send('Self-testing... *please ignore this.*')
+            await dm.send('Self-testing... *please ignore this.*', delete_after=1)
         except discord.Forbidden:
             pass  # no permission on failure
         else:
