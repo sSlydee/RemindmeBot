@@ -313,6 +313,9 @@ class EditModal(discord.ui.Modal):
         self.stop()
 
 
+RRULE_GENERATOR_URL = 'https://www.textmagic.com/free-tools/rrule-generator'
+
+
 class ReminderIntervalAddView(util.interaction.CustomView):
     def __init__(self, reminder: Reminder, stm: STM, message, *args, **kwargs):
         super().__init__(message, *args, **kwargs)
@@ -320,6 +323,11 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
         self.reminder = reminder
         self.stm = stm
+
+        # link to build RRULEs for 'Add Repeating Rule' / 'Add Exception Rule'
+        self.generator_btn = discord.ui.Button(style=discord.ButtonStyle.link, label='RRULE Generator',
+                                               url=RRULE_GENERATOR_URL, row=3)
+        self.add_item(self.generator_btn)
         self.update_btn_activation()
 
     # one-click repetitions, based on the date and time of the reminder
@@ -337,8 +345,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             title='Add new rules',
             description='Pick a quick repetition below, or add a rule written like '\
                         '`every friday at 7`, `every 2 weeks` or `every weekday`.\n'\
-                        'Full [RRULEs](https://www.textmagic.com/free-tools/rrule-generator) work too '\
-                        '(e.g. `FREQ=MONTHLY;BYDAY=1MO`).'
+                        'RRULEs work too (e.g. `FREQ=MONTHLY;BYDAY=1MO`): '\
+                        f'you can use an [RRULE Generator]({RRULE_GENERATOR_URL}).'
         )
 
     def update_btn_activation(self):
@@ -356,6 +364,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             btn.disabled=disabled
 
         self.return_btn.disabled=False # always allow return
+        if hasattr(self, 'generator_btn'):
+            self.generator_btn.disabled=False # a link, always usable
         
 
     async def rrule_callback(self, interaction: discord.Interaction, user_input: str, mode: RuleMode):
@@ -383,7 +393,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
             embed = discord.Embed(title='Invalid rrule',
                                   color=0xff0000,
-                                  description=error_str+'\nPlease try again.')
+                                  description=error_str+'\nPlease try again. '\
+                                              f'You can build an RRULE with an [RRULE Generator]({RRULE_GENERATOR_URL}).')
             view = util.interaction.AckView()
             msg = await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             await self.transfer_to_message(msg, override_old=True) # after sending the new message, as msg is required
