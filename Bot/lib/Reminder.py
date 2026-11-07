@@ -11,6 +11,10 @@ import lib.timeutil as timeutil
 from lib.timeutil import utc_timestamp, utc_from_timestamp  # noqa: F401 (re-exported)
 import lib.Connector  # KEEP this syntax, circular import
 
+# the 🔁 before the footer of repeating reminders: Twemoji, from a CDN copy of a
+# fixed version (the Emojipedia URL used before is gone)
+REPEAT_ICON_URL = 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/1f501.png'
+
 
 log = logging.getLogger('Remindme.Reminder')
 
@@ -443,7 +447,7 @@ class IntervalReminder(Reminder):
         else:
             interval_txt = '\u200b'
 
-        eb.set_footer(text=interval_txt, icon_url='https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/120/twitter/282/repeat-button_1f501.png')
+        eb.set_footer(text=interval_txt, icon_url=REPEAT_ICON_URL)
         
         return eb
 
@@ -465,7 +469,7 @@ class IntervalReminder(Reminder):
         if self.paused:
             prefix = 'Paused, next in ' if self.at else 'Paused, '
         
-        eb.set_footer(text=f'{prefix}{in_str}', icon_url='https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/120/twitter/282/repeat-button_1f501.png')
+        eb.set_footer(text=f'{prefix}{in_str}', icon_url=REPEAT_ICON_URL)
 
         return eb
 
@@ -495,7 +499,7 @@ class IntervalReminder(Reminder):
         prefix = 'Next in ' if self.at else ''
         postfix = f', {disclaimer}' if disclaimer else ''
         
-        eb.set_footer(text=f'{prefix}{in_str}{postfix}', icon_url='https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/120/twitter/282/repeat-button_1f501.png')
+        eb.set_footer(text=f'{prefix}{in_str}{postfix}', icon_url=REPEAT_ICON_URL)
         
         return eb
 

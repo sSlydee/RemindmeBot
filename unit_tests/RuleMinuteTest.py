@@ -5,6 +5,7 @@ from unittest.mock import patch
 import lib.Connector
 import lib.input_parser as p
 import lib.text
+import lib.Reminder
 from lib.Reminder import IntervalReminder
 
 TZ = 'Europe/Paris'
@@ -133,6 +134,14 @@ class IntervalFooterTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_no_trailing_comma(self):
         self.assertFalse((await self.footer()).rstrip().endswith(','))
+
+    async def test_repeat_icon(self):
+        rem = _interval(datetime(2026, 11, 6, 20, 15), ['DTSTART:20261106T201500\nRRULE:FREQ=WEEKLY'])
+        rem.at = datetime(2099, 1, 1)
+        with patch.object(lib.Connector.Connector, 'get_timezone', return_value=TZ):
+            embeds = [await rem.get_embed(client=None), rem.get_info_embed(TZ), rem.get_tiny_embed()]
+        for eb in embeds:
+            self.assertEqual(eb.footer.icon_url, lib.Reminder.REPEAT_ICON_URL)
 
     async def test_image_disclaimer(self):
         self.assertTrue((await self.footer('https://example.com/a.png')).endswith('*Images are provided by the author*'))
