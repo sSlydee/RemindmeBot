@@ -121,6 +121,7 @@ def _parse_relative(args, utcnow):
 
     total_intvl = timedelta(hours=0)
     info = ''
+    previous_unit = ''
 
     for arg in args:
 
@@ -128,6 +129,11 @@ def _parse_relative(args, utcnow):
 
         if arg[0] == None:
             return (utcnow, f'• Argument {arg} is starting with a number\n', None)
+
+        if arg[1] == '' and previous_unit.startswith('h'):
+            # '1h30': the minutes after the hours
+            arg = (arg[0], 'm')
+        previous_unit = arg[1]
 
         if arg[1].startswith('y'):
             intvl = relativedelta(years=arg[0])
@@ -235,6 +241,9 @@ def _parse_fuzzy(input, utcnow, display_tz):
         tmp = localnow - timedelta(days=w_day)
         tmp = tmp.replace(hour=0, minute=0, second=0, microsecond=0)
         replace_datetime = tmp + relativedelta(days=5, hours=-7)  # 17:00 on last day of week
+        if w_day >= 5:
+            # on the weekend, the working week to end is the next one
+            replace_datetime += relativedelta(weeks=1)
 
         matched_regex = eow_re
 
@@ -294,6 +303,34 @@ def _parse_fuzzy(input, utcnow, display_tz):
     return (remind_at, info, None)
 
 
+_MONTH = r'(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)'
+
+# rewrites of inputs the parsers misread, into forms they read well
+_REWRITES = [
+    # parsedatetime knows 'sep' and 'september', 'thu' and 'thursday' only
+    (re.compile(r'\bsept\b\.?', re.IGNORECASE), 'sep'),
+    (re.compile(r'\bthurs?\b\.?', re.IGNORECASE), 'thu'),
+    # 'every year on the 1st of july' / 'every 1 july': recurrent reads 'every july 1'
+    (re.compile(rf'\bevery\s+(?:year\s+(?:on|at|in)\s+)?(?:the\s+)?(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?({_MONTH})\b', re.IGNORECASE),
+     r'every \2 \1'),
+    (re.compile(rf'\bevery\s+year\s+(?:on|at|in)\s+(?=(?:the\s+)?{_MONTH}\b)', re.IGNORECASE), 'every '),
+    # '2 aug 3pm' was read as 02:00 on 2 August: '2 aug at 3pm'
+    (re.compile(rf'^(\d{{1,2}}(?:st|nd|rd|th)?\s+{_MONTH}\.?(?:\s+\d{{4}})?)\s+(?=\d{{1,2}}(?::\d{{2}})?\s*(?:am|pm)?$)',
+                re.IGNORECASE), r'\1 at '),
+]
+
+# a time of day alone ('9:00', '9am', 'at 9', 'noon'): once passed, it means tomorrow
+# (not a bare number: '9' is read as the 9th of the month)
+_TIME_ONLY_RE = re.compile(r'^(?:at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\d{1,2}:\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm)|noon|midnight)$',
+                           re.IGNORECASE)
+
+
+def _rewrite(text: str) -> str:
+    for pattern, replacement in _REWRITES:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def parse(input, utcnow, timezone='UTC'):
     """parse the input string, see _parse; a date too far away is an error"""
     try:
@@ -325,12 +362,15 @@ def _parse(input, utcnow, timezone='UTC'):
     """
 
     display_tz = tz.gettz(timezone)
-    
+    input = _rewrite(input.strip())
+
     # first split into the different arguments
     # next separate number form char arguments
 
     rx = re.compile(r'[^a-zA-Z0-9-]') # allow negative sign
     args = rx.split(input)
+    # numbers and units written together: '1h30m' -> '1', 'h', '30', 'm'
+    args = [part for arg in args for part in re.findall(r'-?\d+|[^\d-]+', arg)]
 
     args = list(filter(lambda a: a != None and a != '', args))
     args = list(map(_split_arg, args))
@@ -352,6 +392,16 @@ def _parse(input, utcnow, timezone='UTC'):
     if remind_at == utcnow and not early_abort:
         remind_at, info, ex = _parse_fuzzy(input, utcnow, display_tz)
         early_abort = (ex != None)
+
+    if isinstance(remind_at, datetime) and remind_at != utcnow and _TIME_ONLY_RE.match(input):
+        local = remind_at.replace(tzinfo=tz.UTC).astimezone(display_tz).replace(tzinfo=None)
+        if ':' not in input and re.search(r'\d', input):
+            # 'at 9' is 9:00 (the parser keeps the current minutes)
+            local = local.replace(minute=0, second=0, microsecond=0)
+        if local.replace(tzinfo=display_tz).astimezone(tz.UTC).replace(tzinfo=None) < utcnow:
+            # a time of day that already passed today: tomorrow at that time
+            local += timedelta(days=1)
+        remind_at = local.replace(tzinfo=display_tz).astimezone(tz.UTC).replace(tzinfo=None)
 
     # negative intervals are not allowed
     if isinstance(remind_at, datetime) and remind_at < utcnow:

@@ -52,15 +52,16 @@ Times are read in the timezone of the server (yours in DMs).
 | You write | Meaning |
 |---|---|
 | `2h`, `90 min`, `3d`, `1 week`, `2 years` | after that duration |
-| `1h 30m`, `1y 1mo 2 days -5h` | durations can be combined (with spaces) |
+| `1h30`, `1h 30m`, `1y 1mo 2 days -5h` | durations can be combined |
 | `in 2h`, `in 3 days at 9:00` | the same, in words |
+| `9:00`, `at 3pm`, `noon` | that time today, or tomorrow once it has passed |
 | `tomorrow 9:00`, `tomorrow at 3pm`, `tonight` | a time tomorrow or today |
 | `friday 18:30`, `monday at 8am`, `next friday` | the next such day |
-| `24 dec at 6pm`, `july 1st at 10:00`, `23/09 15:00` | a date (day first: `01/02/27` is 1 February 2027) |
+| `24 dec 6pm`, `2 aug 15:00`, `july 1st at 10:00`, `23/09 15:00` | a date (day first: `01/02/27` is 1 February 2027) |
 | `23 september 2027 15:00`, `2027-01-15 09:00` | a date with its year |
 | `2027-01-15T09:00:00+01:00` | an ISO timestamp (its own offset wins over the server timezone) |
 | `eod` | today at 17:00 |
-| `eow` | the end of the working week (Friday 17:00) |
+| `eow` | the end of the working week (Friday 17:00, the next one on weekends) |
 | `eom`, `eoy` | the last day of the month, of the year |
 
 Without a time, most dates keep the current time of day: `monday` is next
@@ -78,7 +79,7 @@ every weekday at 8:30
 every 2 weeks
 every first monday of the month
 every month on the 15th at 9:00
-every july 1st at 10:00
+every year on 1 july at 10:00
 ```
 
 Or create a one-time reminder, then press **Set Interval** (or **Edit
