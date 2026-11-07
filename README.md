@@ -335,3 +335,8 @@ delivery (see the commit history).
 ## Credits
 
 Original bot by [Mayerch1](https://github.com/Mayerch1/RemindmeBot).
+
+Logo: the Bell icon from [Fluent Emoji](https://github.com/microsoft/fluentui-emoji)
+(3D style), © Microsoft Corporation,
+[MIT License](https://github.com/microsoft/fluentui-emoji/blob/main/LICENSE),
+on a coloured disc.
