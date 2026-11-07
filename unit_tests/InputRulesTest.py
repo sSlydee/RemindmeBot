@@ -3,7 +3,7 @@ import time
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import discord
 
@@ -120,46 +120,41 @@ def _reminder(target=3):
     return Reminder({'msg': 'x', 'g_id': '1', 'ch_id': '2', 'author': '3', 'target': str(target)})
 
 
-def _not_found():
-    return discord.NotFound(SimpleNamespace(status=404, reason='Not Found'), 'Unknown Member')
+AUTHOR = object()  # the author, as a member of the server
 
 
-class MentionTest(unittest.IsolatedAsyncioTestCase):
+class MentionTest(unittest.TestCase):
     """@everyone, @here and roles in a reminder ping only if its author may ping them"""
 
-    def channel(self, mention_everyone, member_found=True, role=None):
-        member = object()
-        guild = SimpleNamespace(
-            get_member=lambda uid: member if member_found else None,
-            fetch_member=AsyncMock(side_effect=_not_found()),
-            get_role=lambda rid: role if role is not None and rid == 99 else None)
+    def channel(self, mention_everyone, role=None):
+        guild = SimpleNamespace(get_role=lambda rid: role if role is not None and rid == 99 else None)
         return SimpleNamespace(guild=guild,
                                permissions_for=lambda m: discord.Permissions(mention_everyone=mention_everyone))
 
-    async def test_author_may_mention_everyone(self):
-        mentions = await rm.ReminderModule.allowed_mentions(_reminder(), self.channel(True))
+    def test_author_may_mention_everyone(self):
+        mentions = rm.ReminderModule.allowed_mentions(_reminder(), self.channel(True), AUTHOR)
         self.assertTrue(mentions.everyone)
         self.assertTrue(mentions.roles)
 
-    async def test_author_may_not(self):
-        mentions = await rm.ReminderModule.allowed_mentions(_reminder(), self.channel(False))
+    def test_author_may_not(self):
+        mentions = rm.ReminderModule.allowed_mentions(_reminder(), self.channel(False), AUTHOR)
         self.assertFalse(mentions.everyone)
         self.assertEqual(mentions.roles, [])
         self.assertTrue(mentions.users)
 
-    async def test_author_left_the_server(self):
-        mentions = await rm.ReminderModule.allowed_mentions(_reminder(), self.channel(True, member_found=False))
+    def test_author_unknown(self):
+        mentions = rm.ReminderModule.allowed_mentions(_reminder(), self.channel(True), None)
         self.assertFalse(mentions.everyone)
 
-    async def test_mentionable_target_role(self):
+    def test_mentionable_target_role(self):
         role = SimpleNamespace(id=99, mentionable=True)
-        mentions = await rm.ReminderModule.allowed_mentions(_reminder(target=99), self.channel(False, role=role))
+        mentions = rm.ReminderModule.allowed_mentions(_reminder(target=99), self.channel(False, role=role), AUTHOR)
         self.assertFalse(mentions.everyone)
         self.assertEqual(mentions.roles, [role])
 
-    async def test_not_mentionable_target_role(self):
+    def test_not_mentionable_target_role(self):
         role = SimpleNamespace(id=99, mentionable=False)
-        mentions = await rm.ReminderModule.allowed_mentions(_reminder(target=99), self.channel(False, role=role))
+        mentions = rm.ReminderModule.allowed_mentions(_reminder(target=99), self.channel(False, role=role), AUTHOR)
         self.assertEqual(mentions.roles, [])
 
 

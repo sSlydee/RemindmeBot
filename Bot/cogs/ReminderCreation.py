@@ -421,7 +421,10 @@ class ReminderCreation(commands.Cog):
     # commands functions
     # =====================
     # TODO: fix mentionable type, wait for lib fix
-    @commands.slash_command(name='remind', description='set a reminder after a certain time period')
+    # pinging others: moderators only by default. Admins can open it to other
+    # roles in Server Settings > Integrations (/remindme stays open to all)
+    @commands.slash_command(name='remind', description='set a reminder after a certain time period',
+                            default_member_permissions=discord.Permissions(manage_messages=True))
     async def remind_user(self, ctx:discord.ApplicationContext,
                         target:discord.Option((discord.Member, discord.Role), 'the user or role you want to remind', required=True),
                         time:discord.Option(str, 'time/date when the reminder is triggered (see syntax page on /help)', required=True,

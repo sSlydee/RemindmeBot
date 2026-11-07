@@ -231,11 +231,13 @@ class Connector:
         """move a delivered reminder out of the pending ones, keeping it a while:
            the buttons under it (snooze) still need its content
         """
+        if not Connector.delete_reminder(reminder._id):
+            # deleted meanwhile (by its author, or dropped as its author left)
+            return
         doc = reminder._to_json()
         doc['_id'] = reminder._id
         doc['delivered_at'] = utc_timestamp(timeutil.utcnow())
         Connector.db.delivered.replace_one({'_id': reminder._id}, doc, upsert=True)
-        Connector.delete_reminder(reminder._id)
 
     @staticmethod
     def get_delivered(reminder_id):

@@ -10,7 +10,7 @@ import discord
 from discord.ext import commands, tasks
 
 from lib.Connector import Connector
-from lib.Reminder import Reminder, utc_timestamp
+from lib.Reminder import Reminder, IntervalReminder, utc_timestamp
 import lib.text
 
 import util.reminderButtons
@@ -31,6 +31,13 @@ DOWN_AFTER = 3
 # the monitor is only told that all is well when both delivery loops ran this recently
 # (a run that found Discord unreachable doesn't count)
 LOOP_STALE_AFTER = timedelta(minutes=3)
+
+UNKNOWN_MEMBER = 10007  # Discord error code
+
+
+class AuthorLeft(Exception):
+    """the author of a server reminder is no longer a member of that server"""
+
 
 INTERVAL_BROKEN_WARNING = '\n**WARNING: the reminder couldn\'t get queued for future invocations** '\
                           '(likely due to an invalid repetition rule). **This reminder will not be delivered anymore**'
@@ -181,20 +188,40 @@ class ReminderModule(commands.Cog):
 
 
     @staticmethod
-    async def allowed_mentions(rem: Reminder, channel) -> discord.AllowedMentions:
+    async def find_author(guild: discord.Guild, user_id: int):
+        """the author of a reminder as a member of its server
+
+        Returns:
+            the member, or None when Discord doesn't say (the reminder is
+            then sent without @everyone and role pings)
+
+        Raises:
+            AuthorLeft: they are no longer a member of the server
+            TRANSIENT_ERRORS: Discord unreachable, the reminder is kept
+        """
+        member = guild.get_member(user_id)
+        if member is not None:
+            return member
+        try:
+            return await guild.fetch_member(user_id)
+        except discord.NotFound as e:
+            if e.code == UNKNOWN_MEMBER:
+                raise AuthorLeft(user_id) from e
+            return None
+        except discord.Forbidden:
+            return None
+
+
+    @staticmethod
+    def allowed_mentions(rem: Reminder, channel, author) -> discord.AllowedMentions:
         """the mentions of a reminder ping like a message of its author would:
            @everyone, @here and roles need the author's 'Mention @everyone' permission
            in that channel (the role targeted by /remind also pings when it is mentionable)
+
+        author: the author as a member of the server, None when unknown
         """
         guild = channel.guild
-        try:
-            author = guild.get_member(rem.author) or await guild.fetch_member(rem.author)
-            mention_all = channel.permissions_for(author).mention_everyone
-        except (discord.NotFound, discord.Forbidden):
-            # the author left the server
-            mention_all = False
-
-        if mention_all:
+        if author is not None and channel.permissions_for(author).mention_everyone:
             return discord.AllowedMentions(everyone=True, roles=True, users=True)
 
         target_role = guild.get_role(rem.target) if rem.target else None
@@ -241,6 +268,8 @@ class ReminderModule(commands.Cog):
             return
 
         guild = self.client.get_guild(rem.g_id)
+        # raises AuthorLeft: the reminder is dropped, also its DM fallback
+        author = await self.find_author(guild, rem.author) if guild else None
         channel = guild.get_channel_or_thread(rem.ch_id) if guild else None
 
         if not channel:
@@ -286,7 +315,7 @@ class ReminderModule(commands.Cog):
             eb = await rem.get_embed(self.client)
             text = rem.get_embed_text()
 
-        mentions = await self.allowed_mentions(rem, channel)
+        mentions = self.allowed_mentions(rem, channel, author)
         success = await send_message(guild, channel, text, eb, rem_type, reminder=rem, mentions=mentions)
         
 
@@ -336,6 +365,13 @@ class ReminderModule(commands.Cog):
         """
         try:
             await self.print_reminder(rem)
+        except AuthorLeft:
+            # nobody wants it anymore, and it must not keep pinging the others
+            log.info(f'reminder {rem._id} dropped: its author {rem.author} left the server {rem.g_id}')
+            if isinstance(rem, IntervalReminder):
+                Connector.delete_interval(rem._id)
+            else:
+                Connector.delete_reminder(rem._id)
         except TRANSIENT_ERRORS as e:
             if due_at and now - due_at < RETRY_FOR:
                 log.warning(f'reminder {rem._id} not delivered, Discord is unreachable ({e!r}): retrying later')

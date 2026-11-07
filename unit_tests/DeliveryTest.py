@@ -25,6 +25,10 @@ def _server_error():
     return discord.DiscordServerError(SimpleNamespace(status=503, reason='Service Unavailable'), 'down')
 
 
+def _unknown_member():
+    return discord.NotFound(SimpleNamespace(status=404, reason='Not Found'), {'code': 10007, 'message': 'Unknown Member'})
+
+
 class FakeHeartbeat:
     def __init__(self):
         self.pushes = 0
@@ -212,6 +216,51 @@ class DeliveryTest(unittest.IsolatedAsyncioTestCase):
         await self.run_intervals()
         self.assertEqual(self.sent, [])
         self.assertGreater(Connector.get_interval_by_id(rem._id).at, timeutil.utcnow())
+
+    # ---------- the author left the server ----------
+
+    def lookup_fails_with(self, error):
+        """the server of the reminders, where looking up their author fails"""
+        guild = SimpleNamespace(id=GUILD, name='Test', get_member=lambda uid: None,
+                                fetch_member=AsyncMock(side_effect=error))
+        self.cog.client.get_guild = lambda gid: guild
+        self.cog.client.fetch_channel = AsyncMock(side_effect=AssertionError('nothing may be sent'))
+        del self.cog.print_reminder  # the real one
+
+    async def test_reminder_of_an_author_who_left_is_dropped(self):
+        rem = self.add_reminder('hello')
+        self.lookup_fails_with(_unknown_member())
+        with self.assertLogs('Remindme.Core', 'INFO') as logs:
+            await self.run_reminders()
+        self.assertIn('left the server', logs.output[0])
+        self.assertEqual(Connector.db.reminders.count_documents({}), 0)
+        # not kept for its buttons, as it was never sent
+        self.assertIsNone(Connector.get_delivered(rem._id))
+        # not a failure
+        self.assertEqual(self.cog.heartbeat.pushes, 1)
+
+    async def test_interval_of_an_author_who_left_is_deleted(self):
+        self.add_interval('weekly')
+        self.lookup_fails_with(_unknown_member())
+        with self.assertLogs('Remindme.Core', 'INFO'):
+            await self.run_intervals()
+        self.assertEqual(Connector.db.intervals.count_documents({}), 0)
+
+    async def test_author_lookup_while_discord_is_down(self):
+        self.add_reminder('hello')
+        self.lookup_fails_with(_server_error())
+        with self.assertLogs('Remindme.Core', 'WARNING'):
+            await self.run_reminders()
+        self.assertEqual(Connector.db.reminders.count_documents({}), 1)
+
+    async def test_reminder_deleted_while_sent_is_not_kept(self):
+        rem = self.add_reminder('hello')
+
+        async def send(r):
+            Connector.delete_reminder(r._id)  # by its author, in a menu
+        self.cog.print_reminder = AsyncMock(side_effect=send)
+        await self.run_reminders()
+        self.assertIsNone(Connector.get_delivered(rem._id))
 
     # ---------- monitor ----------
 

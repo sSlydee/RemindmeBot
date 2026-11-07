@@ -42,6 +42,11 @@ public bot you can invite: run your own instance (see [Self-hosting](#self-hosti
 shows when the reminder will come, with three buttons: **Set Interval** (make
 it repeat), **Edit** and 🗑️.
 
+As it pings other members, `/remind` is for members with the **Manage
+Messages** permission by default. A server admin can open it to other roles
+or channels in *Server Settings → Integrations → Remind Me*. `/remindme` is
+open to everyone.
+
 The reminder is posted in the channel where you created it, mentioning its
 target. If the bot can't post there anymore, it sends it by DM instead.
 
@@ -121,6 +126,9 @@ one-time reminder, as long as it exists on a repeating one.
 author may ping them in that channel, like in a message of their own. The
 role given to `/remind` also pings when it is mentionable.
 
+A reminder whose author has left the server is deleted when it comes due,
+instead of being sent.
+
 ### Manage your reminders
 
 `/reminder_list` shows your reminders, sorted by date:
@@ -175,7 +183,7 @@ Changing the server settings needs the **Manage Server** permission.
 | Command | |
 |---|---|
 | `/remindme time message` | remind yourself |
-| `/remind target time message` | remind another user or a role |
+| `/remind target time message` | remind another user or a role (Manage Messages by default) |
 | `/reminder_list` | list, edit and delete your reminders |
 | `/timezone timezone` | set the timezone of the server, or your own in DMs |
 | `/settings` | reminder style and creation reply of the server |
@@ -309,6 +317,7 @@ Added or reworked: the time preview while typing, *Quick repeat* and
 plain-language rules, rules kept in local time across daylight saving, the
 persistent buttons with more snooze choices and *skip next*, pause, the new
 `/reminder_list`, user install, mentions limited to what the author may ping,
+`/remind` for moderators by default, reminders of members who left dropped,
 retries when Discord is unreachable, and many fixes to the menus and the
 delivery (see the commit history).
 
