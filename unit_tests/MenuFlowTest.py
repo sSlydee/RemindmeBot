@@ -160,6 +160,25 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(msg.title, 'Add new rules')
         self.assertEqual(self.stored_intervals(), [])
 
+    async def test_rule_without_future_date(self):
+        self.add_reminder()
+        msg = await self.open_interval_menu()
+        await self.discord.click(msg, 'Add Repeating Rule')
+        await self.discord.submit('FREQ=DAILY;UNTIL=20200101')
+        self.assertEqual(msg.title, 'Invalid rrule')
+        self.assertIn('no date in the future', msg.embed.description)
+
+    async def test_pasted_rule_keeps_its_timezone(self):
+        self.add_reminder()
+        msg = await self.open_interval_menu()
+        await self.discord.click(msg, 'Add Repeating Rule')
+        await self.discord.submit('DTSTART;TZID=America/New_York:20261110T090000\nRRULE:FREQ=WEEKLY')
+        self.assertEqual(msg.title, 'New Rrule')
+        await self.discord.click(msg, 'Confirm')
+        [interval] = self.stored_intervals()
+        # 09:00 in New York is 15:00 in Paris, the rule frame
+        self.assertIn('T150000', interval['rrules'][0])
+
     async def test_abort_saves_nothing(self):
         self.add_reminder()
         msg = await self.open_interval_menu()
@@ -231,7 +250,7 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         msg = await self.open_list()
         await self.discord.choose(msg, PICK_REMINDER, '0', user_id=STRANGER)
         self.assertIsInstance(msg.view, ReminderListView)
-        self.assertIn('Only the author', self.discord.last_message().content)
+        self.assertIn('Only the person who opened this menu', self.discord.last_message().content)
 
     async def test_timeout_disables_the_menu(self):
         self.add_reminder()

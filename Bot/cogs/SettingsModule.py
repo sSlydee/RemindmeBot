@@ -207,7 +207,9 @@ class SettingsModule(commands.Cog):
 
     @commands.slash_command(name='settings', description='Get an overview over all settings') 
     async def settings_menu_cmd(self, ctx):
-        
+        # answer Discord before reading the database
+        await ctx.defer(ephemeral=True)
+
         scope = Connector.Scope(
             is_private=(not ctx.guild),
             guild_id=ctx.guild.id if ctx.guild else None,

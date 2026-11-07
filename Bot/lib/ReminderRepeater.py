@@ -85,6 +85,27 @@ def _interval_to_reminder(reminder: IntervalReminder):
 
 
 
+def _stored(interval: IntervalReminder) -> IntervalReminder:
+    """the stored version of an interval: another menu may have changed its rules
+       since this one was loaded (pymongo blocks, nothing runs between read and write)
+    """
+    if interval._id is not None:
+        stored = Connector.get_interval_by_id(interval._id)
+        if stored is not None:
+            return stored
+    return interval
+
+
+def _rule_at(interval: IntervalReminder, rule_idx: int):
+    """(attribute, value) of a rule, numbered like get_rule_dicts()"""
+    for kind in ('rrules', 'exrules', 'rdates', 'exdates'):
+        rules = getattr(interval, kind)
+        if rule_idx < len(rules):
+            return kind, rules[rule_idx]
+        rule_idx -= len(rules)
+    raise IndexError('no such rule')
+
+
 def add_rules(reminder, rrule=None, exrule=None, rdate=None, exdate=None) -> IntervalReminder:
     """add the given rules to the given reminder
        converts the reminder to Intevral if not done yet
@@ -102,6 +123,8 @@ def add_rules(reminder, rrule=None, exrule=None, rdate=None, exdate=None) -> Int
 
     if type(reminder) == Reminder:
         reminder = _reminder_to_interval(reminder)
+    else:
+        reminder = _stored(reminder)
 
     if rrule:
         reminder.rrules.append(rrule)
@@ -132,7 +155,12 @@ def rm_rules(reminder: IntervalReminder, rule_idx=None):
     if rule_idx is None:
         return reminder
 
-    reminder.delete_rule_idx(rule_idx)
+    # the rule shown in this menu, removed from the stored rules
+    kind, value = _rule_at(reminder, rule_idx)
+    reminder = _stored(reminder)
+    rules = getattr(reminder, kind)
+    if value in rules:
+        rules.remove(value)
     reminder.at = reminder.next_trigger(timeutil.utcnow())
 
     rules_cnt = reminder.get_rule_cnt()

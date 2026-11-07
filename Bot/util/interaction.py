@@ -75,7 +75,7 @@ class CustomView(discord.ui.View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if self.owner_id is not None and interaction.user.id != self.owner_id:
-            await interaction.response.send_message('Only the author of this reminder can use these buttons', ephemeral=True)
+            await interaction.response.send_message('Only the person who opened this menu can use it.', ephemeral=True)
             return False
         self.last_interaction = interaction
         return True
@@ -257,14 +257,20 @@ class MulitDropdownView(CustomView):
 
 
 class UndeliveredView(CustomView):
-    def __init__(self, reminder_id, *args, **kwargs):
+    def __init__(self, reminder_id, author_id=None, *args, **kwargs):
         super().__init__(*args , **kwargs)
         self.r_id = reminder_id
+        self.author_id = author_id
 
 
     # This one is similar to the confirmation button except sets the inner value to `False`
     @discord.ui.button(emoji='🗑️', style=discord.ButtonStyle.red)
     async def cancel(self, button: discord.ui.Button, interaction: discord.Interaction):
+
+        if self.author_id is not None and interaction.user.id != self.author_id:
+            # sent to someone else (/remind @user): only the author deletes the reminder
+            await interaction.response.send_message('Only the author of this reminder can delete it.', ephemeral=True)
+            return
 
         # modify button colors
         if not Connector.delete_reminder(self.r_id):

@@ -343,6 +343,12 @@ class Connector:
         return rems + intvl
 
     @staticmethod
+    def count_user_reminders(user_id: int) -> int:
+        """pending reminders and intervals created by a user, everywhere"""
+        query = {'author': str(user_id)}
+        return Connector.db.reminders.count_documents(query) + Connector.db.intervals.count_documents(query)
+
+    @staticmethod
     def get_instance_intervals(instance_id: int):
         """the intervals using the timezone of instance_id:
            all intervals of a server, or the private ones of a user

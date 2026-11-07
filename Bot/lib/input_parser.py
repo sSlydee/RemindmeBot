@@ -1,4 +1,5 @@
 import re
+import zoneinfo
 import lib.timeutil as timeutil
 from datetime import datetime, timedelta
 
@@ -292,6 +293,15 @@ def _parse_fuzzy(input, utcnow, display_tz):
 
 
 def parse(input, utcnow, timezone='UTC'):
+    """parse the input string, see _parse; a date too far away is an error"""
+    try:
+        return _parse(input, utcnow, timezone)
+    except OverflowError:
+        # e.g. '999999999d': beyond the year 9999
+        return (utcnow, '• the given date is too far in the future\n')
+
+
+def _parse(input, utcnow, timezone='UTC'):
     """parse the input string into a datetime object
        this can be either relative or absolute, in relation to the input utcnow
        the function can respect the given timezone, for absolute and semi-absolute dates (e.g. oy)
@@ -429,6 +439,54 @@ def _split_until(rrule_str: str, tz_str: str):
     return '\n'.join(out_lines), until
 
 
+_DTSTART_RE = re.compile(r'^DTSTART(?:;TZID=([^:;]+))?:(\d{8}T\d{6})(Z?)$', re.IGNORECASE)
+
+
+def _find_zone(name: str):
+    """the timezone of a TZID, also when its case was changed ('europe/paris')"""
+    zone = tz.gettz(name)
+    if zone is None:
+        lower = name.lower()
+        for known in zoneinfo.available_timezones():
+            if known.lower() == lower:
+                return tz.gettz(known)
+    return zone
+
+
+def _split_dtstart(rrule_str: str, tz_str: str):
+    """take a DTSTART with a timezone (UTC 'Z' or TZID) out of a rule string
+
+    The rule frame is naive local time, where dateutil would read such a
+    DTSTART as local time: convert it into the local time of the server/user.
+
+    Returns:
+        (str, datetime): the rule string without that DTSTART, and the naive
+                         local DTSTART (None when absent or without timezone)
+    Raises:
+        ValueError: unknown TZID
+    """
+    start = None
+    out_lines = []
+    for line in rrule_str.splitlines() or [rrule_str]:
+        match = _DTSTART_RE.match(line.strip())
+        if not match or not (match.group(1) or match.group(3)):
+            out_lines.append(line)
+            continue
+
+        tzid, value, utc = match.groups()
+        zone = tz.UTC if utc else _find_zone(tzid)
+        if zone is None:
+            raise ValueError(f'Unknown timezone `{tzid}` in DTSTART')
+        start = datetime.strptime(value.upper(), '%Y%m%dT%H%M%S').replace(tzinfo=zone)
+        start = start.astimezone(tz.gettz(tz_str)).replace(tzinfo=None)
+
+    return '\n'.join(out_lines), start
+
+
+# reminders can't repeat more often than this (no spam)
+MIN_REPEAT_GAP = timedelta(minutes=10)
+
+
 def rrule_normalize(rrule_str, dtstart, tz_str='UTC'):
     """generate the rrule of the given rrule string
        in the rule frame: naive datetimes in the local time of the server/user
@@ -444,6 +502,13 @@ def rrule_normalize(rrule_str, dtstart, tz_str='UTC'):
 
     if 'interval=0' in rrule_str.lower():
         return (None, 'Please specify an interval greater than 0')
+
+    try:
+        rrule_str, own_start = _split_dtstart(rrule_str, tz_str)
+    except ValueError as e:
+        return None, str(e)
+    if own_start:
+        dtstart = own_start
 
     # to the minute: an occurrence at 20:15:27 would never match an exception date at 20:15
     dtstart = timeutil.to_minute(dtstart)
@@ -472,6 +537,15 @@ def rrule_normalize(rrule_str, dtstart, tz_str='UTC'):
         return (None, 'Minutely repetitions are not supported by this bot (yet)')
     elif 'secondly' in norm_str:
         return (None, 'Secondly repetitions would be classified as spam by the discord TOS.')
+
+    # nor with a list of minutes or hours (FREQ=HOURLY;BYMINUTE=0,5,10,...)
+    previous = None
+    for i, occurrence in enumerate(rule):
+        if i >= 100:
+            break
+        if previous and occurrence - previous < MIN_REPEAT_GAP:
+            return (None, f'A reminder can repeat every {int(MIN_REPEAT_GAP.total_seconds() // 60)} minutes at most')
+        previous = occurrence
     
     
     # make sure, that the rule is a valid rule

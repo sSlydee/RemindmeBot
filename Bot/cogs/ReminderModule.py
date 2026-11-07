@@ -149,7 +149,7 @@ class ReminderModule(commands.Cog):
             eb = await rem.get_embed(self.client, is_dm=True)
             text = rem.get_embed_text(is_dm=True)
         
-        view = util.interaction.UndeliveredView(reminder_id=rem._id, timeout=300)
+        view = util.interaction.UndeliveredView(reminder_id=rem._id, author_id=rem.author, timeout=300)
 
         # first fallback is string-only message
         # second fallback is dm to user
@@ -165,9 +165,31 @@ class ReminderModule(commands.Cog):
             return
 
 
+    @staticmethod
+    async def allowed_mentions(rem: Reminder, channel) -> discord.AllowedMentions:
+        """the mentions of a reminder ping like a message of its author would:
+           @everyone, @here and roles need the author's 'Mention @everyone' permission
+           in that channel (the role targeted by /remind also pings when it is mentionable)
+        """
+        guild = channel.guild
+        try:
+            author = guild.get_member(rem.author) or await guild.fetch_member(rem.author)
+            mention_all = channel.permissions_for(author).mention_everyone
+        except (discord.NotFound, discord.Forbidden):
+            # the author left the server
+            mention_all = False
+
+        if mention_all:
+            return discord.AllowedMentions(everyone=True, roles=True, users=True)
+
+        target_role = guild.get_role(rem.target) if rem.target else None
+        roles = [target_role] if target_role and target_role.mentionable else []
+        return discord.AllowedMentions(everyone=False, roles=roles, users=True)
+
+
     async def print_reminder(self, rem: Reminder):
 
-        async def send_message(guild, channel, text, embed, rem_type: Connector.ReminderType, reminder):
+        async def send_message(guild, channel, text, embed, rem_type: Connector.ReminderType, reminder, mentions):
             if isinstance(channel, discord.Thread) or VerboseErrors.can_embed(channel):
                 try:
                     if rem_type != Connector.ReminderType.EMBED_ONLY and \
@@ -180,7 +202,7 @@ class ReminderModule(commands.Cog):
 
 
                     tmp_msg = await send_long(channel, text, embed=embed,
-                                    allowed_mentions=discord.AllowedMentions.all(),
+                                    allowed_mentions=mentions,
                                     view=view)
 
                     if view:
@@ -199,7 +221,7 @@ class ReminderModule(commands.Cog):
                     # ignoring the user preferences
                     fallback = await rem.get_string(client=self.client)
                     fallback += '\n||This reminder can be more beautiful with `Embed Links` permissions||'
-                    await send_long(channel, fallback)
+                    await send_long(channel, fallback, allowed_mentions=mentions)
                     return True
                 except discord.errors.Forbidden:
                     if isinstance(channel, discord.Thread) and channel.locked:
@@ -260,7 +282,8 @@ class ReminderModule(commands.Cog):
             eb = await rem.get_embed(self.client)
             text = rem.get_embed_text()
 
-        success = await send_message(guild, channel, text, eb, rem_type, reminder=rem)
+        mentions = await self.allowed_mentions(rem, channel)
+        success = await send_message(guild, channel, text, eb, rem_type, reminder=rem, mentions=mentions)
         
 
         if not success:

@@ -27,6 +27,8 @@ class IntervalTimezoneTest(unittest.TestCase):
             patch.object(connector, 'delete_interval', return_value=True),
             patch.object(connector, 'update_interval_rules'),
             patch.object(connector, 'update_interval_at'),
+            # no stored copy: the rules of the given object are used
+            patch.object(connector, 'get_interval_by_id', return_value=None),
         ]
         for pt in patches:
             pt.start()

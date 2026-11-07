@@ -25,6 +25,8 @@ log = logging.getLogger('Remindme.Creation')
 # the message goes into the embed description (4096 characters at most);
 # text-only reminders are split into several messages
 MAX_MESSAGE_LEN = 4000
+# pending reminders and repeating reminders a user can have
+MAX_REMINDERS_PER_USER = 100
 
 
 class NewReminderView(util.interaction.CustomView):
@@ -153,23 +155,17 @@ class ReminderCreation(commands.Cog):
         # DMs, or a server where only the user installed the app: private reminder, by DM
         personal = lib.permissions.is_personal_context(ctx)
 
-        if not personal:
-            instance_id = ctx.guild.id
-            # try and get the last message, for providing a jump link
-            try:
-                last_msg = await ctx.channel.history(limit=1).flatten()
-            except:
-                last_msg = None
-            last_msg = last_msg[0] if last_msg else None
-        else:
-            instance_id = author.id
-            last_msg = None
-
-        
-        
-
+        # Discord waits 3 seconds for an answer: only quick database reads before it
+        instance_id = author.id if personal else ctx.guild.id
         tz_str = Connector.get_timezone(instance_id)
         auto_del_action = Connector.get_auto_delete(instance_id)
+
+        if Connector.count_user_reminders(author.id) >= MAX_REMINDERS_PER_USER:
+            embed = discord.Embed(title='Failed to create the reminder', color=0xff0000,
+                                  description=f'You already have {MAX_REMINDERS_PER_USER} pending reminders. '\
+                                              'Delete some with `/reminder_list` first.')
+            await ctx.respond(embed=embed, ephemeral=True)
+            return
 
         utcnow = timeutil.utcnow()
         remind_at, info = lib.input_parser.parse(period, utcnow, tz_str)
@@ -214,6 +210,9 @@ class ReminderCreation(commands.Cog):
             dtstart = timeutil.to_minute(dtstart)
 
             rrule, info = lib.input_parser.rrule_normalize(remind_at, dtstart=dtstart, tz_str=tz_str)
+            if rrule and not rrule.after(dtstart):
+                # e.g. 'every day until 1 jan 2020'
+                rrule, info = None, '• this repetition has no date in the future'
             if not rrule:
                 if info != '':
                     out_str = f'```Parsing hints:\n{info}```\n'
@@ -233,6 +232,15 @@ class ReminderCreation(commands.Cog):
             defer_hidden=False
         await ctx.defer(ephemeral=defer_hidden) # allow more headroom for response latency, before command fails
         rem = Reminder()
+
+        last_msg = None
+        if not personal:
+            # the last message, for a jump link
+            try:
+                history = await ctx.channel.history(limit=1).flatten()
+                last_msg = history[0] if history else None
+            except discord.HTTPException:
+                pass
 
 
         info = '' if not info else info

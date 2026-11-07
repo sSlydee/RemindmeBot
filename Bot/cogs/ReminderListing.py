@@ -273,6 +273,8 @@ class ReminderListing(commands.Cog):
     @commands.slash_command(name='reminder_list', description='List all reminders created by you',
                             **lib.permissions.EVERYWHERE)
     async def reminder_list(self, ctx):
+        # answer Discord before reading the database
+        await ctx.defer(ephemeral=True)
 
         if not lib.permissions.is_personal_context(ctx):
             scope = Connector.Scope(is_private=False, guild_id=ctx.guild.id, user_id=ctx.author.id)

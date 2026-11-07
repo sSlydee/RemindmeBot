@@ -117,6 +117,7 @@ class TimezoneModule(discord.Cog):
 
             tz_eb = self._get_tz_error_eb(value)
             view = util.interaction.MulitDropdownView([dd])
+            view.owner_id = ctx.author.id
 
             view.origin = await ctx.respond(embed=tz_eb, view=view, ephemeral=ephemeral)
             responded = True
@@ -136,6 +137,7 @@ class TimezoneModule(discord.Cog):
 
         tz_eb = util.timezones.timezone_embed(value, title='New Timezone', intro='The timezone will be set to')
         view = util.interaction.ConfirmDenyView(dangerous_action=False)
+        view.owner_id = ctx.author.id
 
         if not responded:
             view.origin = await ctx.respond(embed=tz_eb, view=view, ephemeral=ephemeral)

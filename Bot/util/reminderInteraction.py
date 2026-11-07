@@ -90,6 +90,16 @@ class ReminderChannelEdit(util.interaction.CustomView):
             return discord.Embed(title='Failed to set new Channel',
                                  description=f'I am missing permissions to send messages in `{new_ch.name}`',
                                  color=Consts.col_err)
+
+        # nor a channel the author can't post in
+        author = self.stm.ctx.author
+        if isinstance(author, discord.Member):
+            perms = new_ch.permissions_for(author)
+            can_post = perms.send_messages_in_threads if isinstance(new_ch, discord.Thread) else perms.send_messages
+            if not (perms.view_channel and can_post):
+                return discord.Embed(title='Failed to set new Channel',
+                                     description=f'You can\'t send messages in `{new_ch.name}` yourself',
+                                     color=Consts.col_err)
         return None
 
 
@@ -414,6 +424,10 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
         rule_tz = Connector.get_timezone(lib.ReminderRepeater.instance_id_of(self.reminder))
         rrule, error = self._parse_rule(user_input, dtstart, rule_tz)
+        preview = self._preview(rrule, rule_tz) if rrule else ''
+        if rrule and mode == RuleMode.RRULE_ADD and not preview:
+            # e.g. an UNTIL in the past
+            rrule, error = None, 'This rule has no date in the future.'
 
         if not rrule:
             error_str = error or 'Unknown error occurred while parsing the rrule.'
@@ -429,7 +443,6 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             eb = discord.Embed(title=f'New {action_str}',
                            description='Add the rule `{:s}`?. The reminder is {:s} triggered according to this rule.'\
                                         .format(str(rrule), action_modifier))
-            preview = self._preview(rrule, rule_tz)
             if preview:
                 name = 'Skipped dates' if mode == RuleMode.RRULE_EX_ADD else 'Next dates of this rule'
                 eb.add_field(name=name, value=preview, inline=False)
@@ -466,7 +479,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                 return None, f'Couldn\'t read a repetition from `{text[:100]}`.\n'\
                              'Try e.g. `every friday at 7`, `every 2 weeks`, or an RRULE like `FREQ=WEEKLY;BYDAY=FR`.'
             text = parsed
-        return lib.input_parser.rrule_normalize(text.lower(), dtstart, rule_tz)
+        # case kept: a TZID names a timezone ('Europe/Paris')
+        return lib.input_parser.rrule_normalize(text, dtstart, rule_tz)
 
 
     @staticmethod
