@@ -2,7 +2,6 @@ pytz
 tzdata
 python-dateutil
 pymongo
-Unidecode
 parsedatetime
 validators
 orjson

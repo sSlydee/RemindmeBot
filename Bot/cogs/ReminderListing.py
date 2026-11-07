@@ -1,6 +1,5 @@
 import logging
 import math
-from unidecode import unidecode
 from dateutil import tz
 
 import discord
@@ -8,12 +7,12 @@ from discord.ext import commands
 
 from lib.Connector import Connector
 import lib.permissions
-from lib.Reminder import Reminder
+from lib.Reminder import Reminder, IntervalReminder, utc_timestamp
+import lib.text
 import lib.input_parser
 
 import util.interaction
 import util.reminderInteraction
-import util.formatting
 #import lib.ReminderRepeater
 
 
@@ -32,13 +31,28 @@ class ReminderListView(util.interaction.CustomView):
     def get_embed(self) -> discord.Embed:
     
         if self.stm.scope.is_private:
-            title_str = f'**Private** Reminder list'
+            title_str = 'Your private reminders'
         else:
-            title_str = f'Reminder list for {self.stm.ctx.guild.name}'
+            title_str = f'Your reminders · {self.stm.ctx.guild.name}'
 
         return ReminderListing.get_reminder_list_eb(self.stm.reminders, self.stm.page, title_str, self.stm.tz_str, self.stm.scope.user_id)
 
     
+    def option_description(self, rem: Reminder) -> str:
+        """date and channel under a dropdown entry (plain text: no Discord timestamps there)"""
+        parts = []
+        if getattr(rem, 'paused', False):
+            parts.append('⏸️ paused')
+        if rem.at:
+            local = rem.at.replace(tzinfo=tz.UTC).astimezone(tz.gettz(self.stm.tz_str))
+            parts.append(local.strftime('%a %d %b %H:%M'))
+        else:
+            parts.append('no next date')
+        parts.append(f'#{rem.ch_name}' if rem.ch_id and rem.ch_name else 'DM')
+        prefix = '🔁 ' if isinstance(rem, IntervalReminder) else ''
+        return (prefix + ' · '.join(parts))[:100]
+
+
     def page_count(self) -> int:
         return max(math.ceil(len(self.stm.reminders) / 9), 1)
 
@@ -68,14 +82,13 @@ class ReminderListView(util.interaction.CustomView):
         if page_rems:
             reminder_opts = []
             for i, r in enumerate(page_rems):
-                # make sure to always have between 1 and 25 chars in any label
-                # *AFTER* unidecode
-                lbl = unidecode(r.title)[:25] if r.title and unidecode(r.title) else unidecode(r.msg)[:25]
-                lbl = lbl if lbl else '*empty reminder*'
+                # labels need 1 to 100 characters
+                lbl = (r.title or r.msg or '').replace('\n', ' ').strip()[:80] or '*empty reminder*'
 
                 reminder_opts.append(discord.SelectOption(
-                    label= lbl, 
-                    emoji= lib.input_parser.num_to_emoji(i+1), 
+                    label= lbl,
+                    description= self.option_description(r),
+                    emoji= lib.input_parser.num_to_emoji(i+1),
                     value= str(i)))
 
 
@@ -161,72 +174,81 @@ class ReminderListing(commands.Cog):
     
 
     @staticmethod
-    def _create_reminder_list(reminders, tz_str, author_id=None):
-        """convert the inputed reminder list
-           into a menu-string, with leading emojis
+    def _rule_summary(rem: IntervalReminder) -> str:
+        """the repetition of an interval in a few words ('every Fri, 1 exception')"""
+        if rem.rrules:
+            try:
+                # the next date is shown above: drop 'starting Fri Nov 13, 2026 7am'
+                text = lib.input_parser.rrule_to_english(rem.rrules[0]).split(' starting ')[0]
+            except Exception:
+                text = 'custom repetition'
+            others = len(rem.rrules) - 1 + len(rem.rdates)
+            if others:
+                text += f' (+{others} more)'
+        else:
+            text = f'{len(rem.rdates) + 1} dates'
 
-        Args:
-            reminders ([]]): list of reminders
-
-        Returns:
-            str: reminder list string
-        """
-
-        rows = []
-        for i, r in enumerate(reminders):
-
-            MAX_FIELD_LEN = 33
-            MAX_MSG_LEN = 26
-
-            at_local = r.at.replace(tzinfo=tz.UTC).astimezone(tz.gettz(tz_str)) if r.at else None
-
-
-            content = r.title[0:MAX_MSG_LEN] if r.title else r.msg[0:MAX_MSG_LEN]
-
-            sfx = ''
-            if author_id and r.author != author_id:
-                sfx = '*'
-
-
-            # a total of 33 chars are possible before overflow
-            #
-            # the message will get up to 26 chars
-            # the channel len will get the rest, but at least 7
-            max_ch_len = MAX_FIELD_LEN-min(len(content), MAX_MSG_LEN)
-            
-            rows.append((str(i+1)+'.'+sfx,
-                        ('paused' if getattr(r, 'paused', False) else at_local.strftime('%d.%b %H:%M')) if at_local else '-',
-                        (r.ch_name or 'Unknown')[0:max_ch_len],
-                        content))
-
-        table = util.formatting.generate_code_table(['No.', 'Next', 'Channel', 'Message'], rows, description='Given in your server timezone')
-
-        return '\n'.join(table)
+        exceptions = len(rem.exrules) + len(rem.exdates)
+        if exceptions:
+            text += f', {exceptions} exception' + ('s' if exceptions > 1 else '')
+        return text
 
 
     @staticmethod
-    def get_reminder_list_eb(reminders: list[Reminder], page, title_start='Reminder list', tz_str='UTC', author_id=None):
-        """get the menu embed for all reminders
-           in respect to the selected page
+    def _entry(number: int, rem: Reminder, author_id=None) -> str:
+        """one reminder of the list: its name, then its date, channel and repetition
 
-           if title_start is specified, will onld add page counter
-           at end of title_start
+        The dates are Discord timestamps: each viewer sees them in their own
+        language and timezone, and 'in 3 days' stays up to date
+        """
+        is_interval = isinstance(rem, IntervalReminder)
+        paused = getattr(rem, 'paused', False)
+
+        name = (rem.title or rem.msg or '').replace('\n', ' ').strip() or '*empty reminder*'
+        icons = ('🔁 ' if is_interval else '') + ('⏸️ ' if paused else '')
+        head = f'{lib.input_parser.num_to_emoji(number)} {icons}**{discord.utils.escape_markdown(lib.text.shorten(name, 60))}**'
+
+        details = []
+        if rem.at:
+            ts = int(utc_timestamp(rem.at))
+            details += [f'<t:{ts}:f>', 'paused' if paused else f'<t:{ts}:R>']
+        else:
+            details.append('no next date')
+        details.append(f'<#{rem.ch_id}>' if rem.ch_id else 'by DM')
+        if rem.target and rem.target != rem.author:
+            details.append(f'for {rem.target_name or f"<@{rem.target}>"}')
+        if author_id and rem.author != author_id:
+            details.append(f'from <@{rem.author}>')
+
+        lines = [head, '\u2003' + ' · '.join(details)]
+        if is_interval:
+            lines.append('\u2003↳ ' + ReminderListing._rule_summary(rem))
+        return '\n'.join(lines)
+
+
+    @staticmethod
+    def get_reminder_list_eb(reminders: list[Reminder], page, title_start='Reminders', tz_str='UTC', author_id=None):
+        """the list embed: the reminders of the selected page, numbered like the dropdown
 
         Args:
-            reminders ([]]): reminder list
+            reminders ([]]): all reminders, sorted by date
             page (int): selected page
 
         Returns:
             discord.Embed: the menu embed
         """
-
-        page_cnt = math.ceil(len(reminders) / 9)
+        page_cnt = max(math.ceil(len(reminders) / 9), 1)
         selectables = ReminderListing.get_reminders_on_page(reminders, page)
 
-        out_str = ReminderListing._create_reminder_list(selectables, tz_str, author_id=author_id)
+        if selectables:
+            description = '\n\n'.join(ReminderListing._entry(i + 1, r, author_id) for i, r in enumerate(selectables))
+        else:
+            description = 'No pending reminders. Create one with `/remindme`.'
 
-        embed = discord.Embed(title=f'{title_start} {page+1}/{max(page_cnt, 1)}',
-                                description=out_str)
+        embed = discord.Embed(title=title_start, description=lib.text.shorten(description, lib.text.MAX_DESCRIPTION),
+                              color=0x409fe2)
+        count = len(reminders)
+        embed.set_footer(text=f'Page {page + 1}/{page_cnt} · {count} reminder' + ('s' if count != 1 else ''))
         return embed
 
 
