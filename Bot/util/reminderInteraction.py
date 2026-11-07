@@ -237,6 +237,7 @@ class EditModal(ReportErrors, discord.ui.Modal):
                 label='Content',
                 value=self.reminder.msg,
                 required=True,
+                max_length=4000,
                 style=discord.InputTextStyle.paragraph
             )
         )

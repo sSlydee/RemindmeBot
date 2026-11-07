@@ -10,6 +10,7 @@ import discord
 from discord.ext import commands
 
 import lib.permissions
+import lib.ReminderRepeater
 import util.interaction
 import util.timezones
 from lib.Connector import Connector
@@ -144,6 +145,9 @@ class TimezoneModule(discord.Cog):
         await view.wait()
         if view.value:
             Connector.set_timezone(instance_id, value)
+            # repeating reminders keep their local time: move their next date
+            moved = lib.ReminderRepeater.reschedule_instance(instance_id, value)
+            log.info(f'timezone of {instance_id} set to {value}, {moved} interval(s) rescheduled')
 
         
 

@@ -343,6 +343,16 @@ class Connector:
         return rems + intvl
 
     @staticmethod
+    def get_instance_intervals(instance_id: int):
+        """the intervals using the timezone of instance_id:
+           all intervals of a server, or the private ones of a user
+           (server and user ids never collide)
+        """
+        intvl = Connector.db.intervals.find({'$or': [{'g_id': str(instance_id)},
+                                                     {'g_id': None, 'author': str(instance_id)}]})
+        return list(map(IntervalReminder, intvl))
+
+    @staticmethod
     def _get_user_private_reminders(user_id: int):
 
         rems = list(Connector.db.reminders.find({'g_id': None, 'author': str(user_id)}))

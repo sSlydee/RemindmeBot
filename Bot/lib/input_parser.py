@@ -445,10 +445,15 @@ def rrule_normalize(rrule_str, dtstart, tz_str='UTC'):
     if 'interval=0' in rrule_str.lower():
         return (None, 'Please specify an interval greater than 0')
 
+    # to the minute: an occurrence at 20:15:27 would never match an exception date at 20:15
+    dtstart = timeutil.to_minute(dtstart)
+
     rule_str, until = _split_until(rrule_str, tz_str)
 
     try:
         rule = rr.rrulestr(rule_str, dtstart=dtstart, ignoretz=True)
+        if 'bysecond' in rule_str.lower():
+            rule = rule.replace(bysecond=0)
     except Exception as e:
         return None, str(e)
 

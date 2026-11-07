@@ -53,6 +53,9 @@ class IntervalPauseTest(unittest.TestCase):
         sent = []
 
         class FakeCog:
+            deliver = RM.ReminderModule.deliver
+            loop_done = {}
+
             async def print_reminder(self, rem):
                 sent.append(rem._id)
 

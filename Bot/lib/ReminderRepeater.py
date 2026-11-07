@@ -58,7 +58,7 @@ def _reminder_to_interval(reminder: Reminder):
 
     # update the occurrence to optimise database fetches
     # first_at lives in the rule frame (local time), at stays UTC
-    reminder.first_at = utc_to_rule_frame(old_reminder.at, instance_id_of(old_reminder))
+    reminder.first_at = timeutil.to_minute(utc_to_rule_frame(old_reminder.at, instance_id_of(old_reminder)))
     # keep reminder 'at' at old val for now
 
     new_id = Connector.add_interval(reminder)
@@ -109,11 +109,12 @@ def add_rules(reminder, rrule=None, exrule=None, rdate=None, exdate=None) -> Int
     if exrule:
         reminder.exrules.append(exrule)
 
+    # dates to the minute, like the occurrences of the rules
     if rdate:
-        reminder.rdates.append(rdate)
+        reminder.rdates.append(timeutil.to_minute(rdate))
 
     if exdate:
-        reminder.exdates.append(exdate)
+        reminder.exdates.append(timeutil.to_minute(exdate))
 
 
     reminder.at = reminder.next_trigger(timeutil.utcnow())
@@ -192,3 +193,25 @@ def _rule_normalize(rule_str, dtstart):
     return rule, None
 
 
+
+
+def reschedule_instance(instance_id, tz_str: str = None) -> int:
+    """compute again the next date of every interval of a server (or of a
+       user's private intervals), e.g. after a change of its timezone
+
+    The rules keep their local times (07:00 stays 07:00 in the new timezone),
+    the stored next date (UTC) moves accordingly.
+
+    Returns:
+        int: number of intervals updated
+    """
+    tz_str = tz_str or Connector.get_timezone(instance_id)
+    utcnow = timeutil.utcnow()
+    count = 0
+    for interval in Connector.get_instance_intervals(instance_id):
+        if not interval.at:
+            continue  # orphaned, deleted soon
+        interval.at = interval.next_trigger(utcnow, tz_str=tz_str)
+        Connector.update_interval_at(interval)
+        count += 1
+    return count

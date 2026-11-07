@@ -22,6 +22,10 @@ import util.reminderInteraction
 
 log = logging.getLogger('Remindme.Creation')
 
+# the message goes into the embed description (4096 characters at most);
+# text-only reminders are split into several messages
+MAX_MESSAGE_LEN = 4000
+
 
 class NewReminderView(util.interaction.CustomView):
     def __init__(self, reminder: Reminder, stm: util.reminderInteraction.STM, info_str: str, rrule_override, *args, **kwargs):
@@ -205,8 +209,9 @@ class ReminderCreation(commands.Cog):
 
         elif isinstance(remind_at, str):
 
-            # interval rules live in the local time of the server/user
+            # interval rules live in the local time of the server/user, to the minute
             dtstart = utcnow.replace(tzinfo=tz.UTC).astimezone(tz.gettz(tz_str)).replace(tzinfo=None)
+            dtstart = timeutil.to_minute(dtstart)
 
             rrule, info = lib.input_parser.rrule_normalize(remind_at, dtstart=dtstart, tz_str=tz_str)
             if not rrule:
@@ -350,7 +355,8 @@ class ReminderCreation(commands.Cog):
     async def remind_user(self, ctx:discord.ApplicationContext,
                         target:discord.Option((discord.Member, discord.Role), 'the user or role you want to remind', required=True),
                         time:discord.Option(str, 'time/date when the reminder is triggered (see syntax page on /help)', required=True),
-                        message:discord.Option(str, 'the bot will remind you with this message', required=True)):
+                        message:discord.Option(str, 'the bot will remind you with this message', required=True,
+                                               max_length=MAX_MESSAGE_LEN)):
                         #channel:discord.Option((discord.TextChannel,discord.VoiceChannel), 'Show the reminder in a channel other than the current one', required=False)=None):
 
         channel=None
@@ -365,7 +371,8 @@ class ReminderCreation(commands.Cog):
                             **lib.permissions.EVERYWHERE)
     async def remindme(self, ctx:discord.ApplicationContext,
                         time:discord.Option(str, 'time/date when the reminder is triggered (see syntax page on /help)', required=True),
-                        message:discord.Option(str, 'the bot will remind you with this message', required=True)):
+                        message:discord.Option(str, 'the bot will remind you with this message', required=True,
+                                               max_length=MAX_MESSAGE_LEN)):
                         #channel:discord.Option((discord.TextChannel,discord.VoiceChannel), 'Show the reminder in a channel other than the current one', required=False)=None):
         channel = None
         if not lib.permissions.is_personal_context(ctx):

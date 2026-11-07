@@ -6,6 +6,7 @@ import dateutil.rrule as rr
 import logging
 
 import lib.input_parser
+import lib.text
 import lib.timeutil as timeutil
 from lib.timeutil import utc_timestamp, utc_from_timestamp  # noqa: F401 (re-exported)
 import lib.Connector  # KEEP this syntax, circular import
@@ -196,7 +197,8 @@ class Reminder:
 
 
     def _get_embed_body(self, title, author=None, tz_str='UTC'):
-        eb = discord.Embed(title=title, description=f'{self.msg}', color=0xe4ff1e)
+        # Discord refuses embeds with a longer description
+        eb = discord.Embed(title=title, description=lib.text.shorten(f'{self.msg}', lib.text.MAX_DESCRIPTION), color=0xe4ff1e)
 
         if self.created_at:
             # Discord shows the embed timestamp in each viewer's local time
@@ -575,47 +577,68 @@ class IntervalReminder(Reminder):
                 return False
             return True
 
+        def to_minute_rule(rule_str):
+            # rules saved before the minute rounding may start at e.g. 20:15:27
+            rule = rr.rrulestr(rule_str)
+            start = rule._dtstart
+            if start and (start.second or start.microsecond):
+                rule = rule.replace(dtstart=timeutil.to_minute(start))
+            return rule
+
         instance_id = self.g_id if self.g_id else self.author
 
+        # everything to the minute, so that exception dates match the occurrences
         ruleset = rr.rruleset()
 
         # the date of the initial remindme
         # is always included by default
 
-        ruleset.rdate(self.first_at)
+        ruleset.rdate(timeutil.to_minute(self.first_at))
 
         for rule in self.rrules:
             if not valid_rule(rule):
                 continue
-            ruleset.rrule(rr.rrulestr(rule))
+            ruleset.rrule(to_minute_rule(rule))
 
         for rule in self.exrules:
             if not valid_rule(rule):
                 continue
-            ruleset.exrule(rr.rrulestr(rule))
+            ruleset.exrule(to_minute_rule(rule))
 
         for date in self.rdates:
-            ruleset.rdate(date)
+            ruleset.rdate(timeutil.to_minute(date))
 
         for date in self.exdates:
-            ruleset.exdate(date)
+            ruleset.exdate(timeutil.to_minute(date))
 
 
         # the rules are in the local time of the server (or user, in DMs):
         # find the next event in local time, then convert it back to UTC
         if not tz_str:
             tz_str = lib.Connector.Connector.get_timezone(instance_id)
+        local_tz = tz.gettz(tz_str)
 
         local_now = utcnow.replace(tzinfo=tz.UTC)
-        local_now = local_now.astimezone(tz.gettz(tz_str))
+        local_now = local_now.astimezone(local_tz)
         local_now = local_now.replace(tzinfo=None)
 
-        next_trigger = ruleset.after(local_now)
+        after = local_now
+        for _ in range(100):
+            local_next = ruleset.after(after)
+            if local_next is None:
+                return None
 
-        if next_trigger:
             # back to UTC, for DB queries
-            next_trigger = next_trigger.replace(tzinfo=tz.gettz(tz_str))
+            next_trigger = local_next.replace(tzinfo=local_tz)
             next_trigger = next_trigger.astimezone(tz.UTC)
             next_trigger = next_trigger.replace(tzinfo=None)
 
-        return next_trigger
+            if next_trigger > utcnow:
+                return next_trigger
+
+            # a local time that happens twice (end of daylight saving time) is read
+            # as its first pass: now is in the second pass, the first one is over.
+            # Don't send it again, move on to the next occurrence
+            after = local_next
+
+        return None
