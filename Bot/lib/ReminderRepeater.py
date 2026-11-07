@@ -1,7 +1,6 @@
 from datetime import datetime
 import lib.timeutil as timeutil
 from dateutil import tz
-import dateutil.rrule as rr
 
 from lib.Connector import Connector
 from lib.Reminder import Reminder, IntervalReminder
@@ -182,45 +181,6 @@ def rm_rules(reminder: IntervalReminder, rule_idx=None):
     Connector.update_interval_at(reminder)
 
     return reminder
-
-
-def _rule_normalize(rule_str, dtstart):
-    """generate the rrule of the given rrule string
-       if the string contains timezone based offsets (iso dates)
-       they are converted into the non-timezone aware utc equivalent
-
-    Args:
-        rule_str ([type]): [description]
-        dtstart ([type]): [description]
-
-    Returns:
-        [type]: [description]
-    """
-
-    try:
-        rule = rr.rrulestr(rule_str)
-    except Exception as e:
-        return None, str(e)
-
-    until = rule._until
-    until_utc = None
-
-    if until:
-        # convert the until date to non-tz aware
-        until_utc = until.astimezone(tz.UTC)
-        until_utc = until_utc.replace(tzinfo=None)
-
-    try:
-        rule = rr.rrulestr(rule_str, dtstart=dtstart, ignoretz=True)
-    except Exception as e:
-        return None, str(e)
-
-    if until_utc:
-        rule = rule.replace(until=until_utc)
-
-    return rule, None
-
-
 
 
 def reschedule_instance(instance_id, tz_str: str = None) -> int:

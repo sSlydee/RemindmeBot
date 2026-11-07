@@ -130,7 +130,7 @@ class Reminder:
         total_secs = int(max(0, delta.total_seconds()))
 
         hours, rem = divmod(total_secs, 3600)
-        mins, secs = divmod(rem, 60)
+        mins = rem // 60
         
         days, rem = divmod(total_secs, 3600*24)
         hour_days = int(rem/3600)
@@ -493,7 +493,7 @@ class IntervalReminder(Reminder):
 
         in_str = self.get_interval_string()
         prefix = 'Next in ' if self.at else ''
-        postfix = f', {disclaimer}'
+        postfix = f', {disclaimer}' if disclaimer else ''
         
         eb.set_footer(text=f'{prefix}{in_str}{postfix}', icon_url='https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/120/twitter/282/repeat-button_1f501.png')
         
@@ -535,38 +535,6 @@ class IntervalReminder(Reminder):
             ret.append({'label': 'Single Exclusion', 'descr': date.strftime('%Y-%m-%d %H:%M'), 'default': False})
         
         return ret
-
-
-    def delete_rule_idx(self, rule_idx):
-
-        idx_offset = 0
-
-        max_rrule = len(self.rrules)
-        
-        if rule_idx < max_rrule:
-            del self.rrules[rule_idx]
-            return
-        idx_offset = max_rrule
-
-        max_exrule = len(self.exrules)
-        if rule_idx < max_exrule+idx_offset:
-            del self.exrules[rule_idx-idx_offset]
-            return
-        idx_offset += max_exrule
-
-        max_rdate = len(self.rdates)
-        if rule_idx < max_rdate+idx_offset:
-            del self.rdates[rule_idx-idx_offset]
-            return
-        idx_offset += max_rdate
-
-        max_exdate = len(self.exdates)
-        if rule_idx < max_exdate+idx_offset:
-            del self.exdates[rule_idx-idx_offset]
-            return
-        idx_offset += max_exdate
-
-        return
 
 
     def next_trigger(self, utcnow, tz_str=None):

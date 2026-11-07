@@ -1,7 +1,7 @@
 import discord
 import lib.timeutil as timeutil
 from enum import Enum
-from datetime import datetime, timedelta
+from datetime import datetime
 from dateutil import tz
 import validators
 import logging
@@ -17,14 +17,10 @@ from lib.Connector import Connector
 log = logging.getLogger('Remindme.Listing')
 
 
-class STMState(Enum):
-        INIT=0
-
 class STM():
     def __init__(self, ctx, scope):
         self.ctx: discord.ApplicationContext=ctx
         self.scope:Connector.Scope=scope
-        self.state:STMState = STMState.INIT
         self.page:int=0
         self.reminders:list[Reminder] = []
         self.tz_str:str = None
@@ -633,7 +629,7 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
 
 
 
-    def get_embed(self, rule_id:int=None) -> discord.Embed:
+    def get_embed(self) -> discord.Embed:
 
         rules = self.reminder.get_rule_dicts()
 

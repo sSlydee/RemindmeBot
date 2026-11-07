@@ -123,5 +123,20 @@ class MessageSplitTest(unittest.TestCase):
         self.assertEqual(len(eb.description), 4096)
 
 
+class IntervalFooterTest(unittest.IsolatedAsyncioTestCase):
+
+    async def footer(self, img_url=None):
+        rem = _interval(datetime(2026, 11, 6, 20, 15), ['DTSTART:20261106T201500\nRRULE:FREQ=WEEKLY'])
+        rem.at = datetime(2099, 1, 1)
+        rem.img_url = img_url
+        return (await rem.get_embed(client=None)).footer.text
+
+    async def test_no_trailing_comma(self):
+        self.assertFalse((await self.footer()).rstrip().endswith(','))
+
+    async def test_image_disclaimer(self):
+        self.assertTrue((await self.footer('https://example.com/a.png')).endswith('*Images are provided by the author*'))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -224,26 +224,6 @@ class Connector:
 
 
     @staticmethod
-    def get_author_of_id(reminder_id):
-        """return the author id of the given reminder id
-           can be a plain reminder or an interval
-           
-           None if id not found
-        """
-
-        reminder = Connector.db.reminders.find_one({'_id': reminder_id}, {'author': 1})
-        
-        if not reminder:
-            reminder = Connector.db.intervals.find_one({'_id': reminder_id}, {'author': 1})
-
-        if reminder:
-            return int(reminder['author'])
-        else:
-            return None
-
-
-
-    @staticmethod
     def delete_reminder(reminder_id):
         """delete the reminder with the given id
 
