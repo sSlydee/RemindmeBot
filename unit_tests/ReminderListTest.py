@@ -69,6 +69,11 @@ class ListEmbedTest(unittest.TestCase):
     def test_someone_else_s_reminder(self):
         self.assertIn('from <@3>', self.entry(_reminder(), author_id=9))
 
+    def test_reminder_for_the_viewer(self):
+        # in 'For me': who it is from, not again for whom
+        details = self.entry(_reminder(author='4', target='3', target_name='@Me')).splitlines()[1]
+        self.assertTrue(details.endswith('· <#22> · from <@4>'), details)
+
     def test_no_next_date(self):
         rem = _interval()
         rem.at = None

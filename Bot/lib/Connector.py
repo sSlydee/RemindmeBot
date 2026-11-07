@@ -348,6 +348,24 @@ class Connector:
         return rems + intvl
 
     @staticmethod
+    def _find_reminders(query: dict) -> list:
+        """reminders and intervals matching query, sorted by date"""
+        rems = [Reminder(doc) for doc in Connector.db.reminders.find(query)]
+        intvl = [IntervalReminder(doc) for doc in Connector.db.intervals.find(query)]
+        return sorted(rems + intvl)
+
+    @staticmethod
+    def get_reminders_for(guild_id: int, user_id: int) -> list:
+        """the reminders of a server for a user, created by other members"""
+        return Connector._find_reminders({'g_id': str(guild_id), 'target': str(user_id),
+                                          'author': {'$ne': str(user_id)}})
+
+    @staticmethod
+    def get_guild_reminders(guild_id: int) -> list:
+        """all the reminders of a server"""
+        return Connector._find_reminders({'g_id': str(guild_id)})
+
+    @staticmethod
     def count_user_reminders(user_id: int) -> int:
         """pending reminders and intervals created by a user, everywhere"""
         query = {'author': str(user_id)}

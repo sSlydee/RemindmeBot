@@ -24,6 +24,8 @@ class STM():
         self.page:int=0
         self.reminders:list[Reminder] = []
         self.tz_str:str = None
+        # what /reminder_list shows (cogs.ReminderListing: MINE, FOR_ME, SERVER)
+        self.mode:str = 'mine'
 
 
 class ReminderChannelEdit(util.interaction.CustomView):
@@ -931,6 +933,9 @@ class ReminderEditView(util.interaction.CustomView):
                 Connector.delete_interval(self.reminder._id)
             else:
                 Connector.delete_reminder(self.reminder._id)
+            if self.is_foreign:
+                # by the member it was for, or a moderator (see /reminder_list)
+                log.info(f'reminder {self.reminder._id} of {self.reminder.author} deleted by {self.owner_id}')
             self.stop() # back to the list, without this reminder
             return
 

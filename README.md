@@ -117,7 +117,8 @@ Under the reminder:
 
 Anyone can snooze: when someone else than the author does, the copy is
 theirs and comes to their DMs (*Tomorrow 9:00* then uses their own
-timezone). Only the author can skip or delete.
+timezone). Only the author can skip. The author, the member it is for and
+members with **Manage Messages** can delete.
 
 The buttons keep working after a restart of the bot: for 7 days on a
 one-time reminder, as long as it exists on a repeating one.
@@ -148,6 +149,15 @@ menu below the list to:
 * **Set Interval** / **Edit Interval**: add or remove repetitions;
 * **Pause** / **Resume**, **Skip next**: repeating reminders;
 * **Delete**.
+
+On a server, the buttons under the list switch what it shows:
+
+* **My reminders**: the ones you created;
+* **For me**: the ones other members created for you with `/remind`. You
+  can delete them, not edit them;
+* **Whole server**: all the reminders of the server, with their author. Only
+  for members with the **Manage Messages** permission, who can delete them
+  (and edit only their own).
 
 The list is only visible to you. Menus close after 14 minutes without use.
 
@@ -184,7 +194,7 @@ Changing the server settings needs the **Manage Server** permission.
 |---|---|
 | `/remindme time message` | remind yourself |
 | `/remind target time message` | remind another user or a role (Manage Messages by default) |
-| `/reminder_list` | list, edit and delete your reminders |
+| `/reminder_list` | list, edit and delete your reminders (and the ones for you, or the whole server's) |
 | `/timezone timezone` | set the timezone of the server, or your own in DMs |
 | `/settings` | reminder style and creation reply of the server |
 | `/help` | help pages, with the time syntax |
@@ -318,6 +328,7 @@ plain-language rules, rules kept in local time across daylight saving, the
 persistent buttons with more snooze choices and *skip next*, pause, the new
 `/reminder_list`, user install, mentions limited to what the author may ping,
 `/remind` for moderators by default, reminders of members who left dropped,
+reminders for you and of the whole server (moderators) in `/reminder_list`,
 retries when Discord is unreachable, and many fixes to the menus and the
 delivery (see the commit history).
 

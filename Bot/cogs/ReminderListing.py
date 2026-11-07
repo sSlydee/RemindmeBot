@@ -19,6 +19,28 @@ import util.reminderInteraction
 log = logging.getLogger('Remindme.Listing')
 
 
+# what the list shows on a server (in DMs: always the user's own reminders)
+MINE = 'mine'
+FOR_ME = 'for_me'    # created by other members for the user: they can delete them
+SERVER = 'server'    # all of the server, for moderators
+
+MODE_LABELS = {MINE: 'My reminders', FOR_ME: 'For me', SERVER: 'Whole server'}
+EMPTY_TEXTS = {
+    MINE: 'No pending reminders. Create one with `/remindme`.',
+    FOR_ME: 'No reminders from other members for you. When someone reminds you with `/remind`, '
+            'you can delete their reminder here.',
+    SERVER: 'No pending reminders on this server.',
+}
+
+
+def load_reminders(stm) -> list[Reminder]:
+    """the reminders the list shows, sorted by date"""
+    if stm.mode == FOR_ME:
+        return Connector.get_reminders_for(stm.scope.guild_id, stm.scope.user_id)
+    if stm.mode == SERVER:
+        return Connector.get_guild_reminders(stm.scope.guild_id)
+    return Connector.get_scoped_reminders(stm.scope)
+
 
 class ReminderListView(util.interaction.CustomView):
     def __init__(self, stm, *args, **kwargs):
@@ -26,16 +48,49 @@ class ReminderListView(util.interaction.CustomView):
 
         self.stm:util.reminderInteraction.STM = stm
         self.owner_id = stm.ctx.author.id
+        self.mode_buttons = {}
+        self.add_mode_buttons()
         self.update_dropdown()
 
+    def add_mode_buttons(self):
+        if self.stm.scope.is_private:
+            return
+        modes = [MINE, FOR_ME]
+        if lib.permissions.can_moderate(self.stm.ctx.author, self.stm.scope.guild_id):
+            modes.append(SERVER)
+        for mode in modes:
+            button = discord.ui.Button(label=MODE_LABELS[mode], row=2)
+            button.callback = self.mode_callback(mode)
+            self.mode_buttons[mode] = button
+            self.add_item(button)
+        self.style_mode_buttons()
+
+    def style_mode_buttons(self):
+        for mode, button in self.mode_buttons.items():
+            button.style = discord.ButtonStyle.primary if mode == self.stm.mode else discord.ButtonStyle.secondary
+
+    def mode_callback(self, mode):
+        async def callback(interaction: discord.Interaction):
+            self.stm.mode = mode
+            self.stm.page = 0
+            self.style_mode_buttons()
+            self.update_dropdown()
+            await self.show(interaction, embed=self.get_embed(), view=self)
+        return callback
+
     def get_embed(self) -> discord.Embed:
-    
+
         if self.stm.scope.is_private:
             title_str = 'Your private reminders'
+        elif self.stm.mode == FOR_ME:
+            title_str = f'Reminders for you · {self.stm.ctx.guild.name}'
+        elif self.stm.mode == SERVER:
+            title_str = f'All reminders · {self.stm.ctx.guild.name}'
         else:
             title_str = f'Your reminders · {self.stm.ctx.guild.name}'
 
-        return ReminderListing.get_reminder_list_eb(self.stm.reminders, self.stm.page, title_str, self.stm.tz_str, self.stm.scope.user_id)
+        return ReminderListing.get_reminder_list_eb(self.stm.reminders, self.stm.page, title_str, self.stm.tz_str,
+                                                    self.stm.scope.user_id, empty_text=EMPTY_TEXTS[self.stm.mode])
 
     
     def option_description(self, rem: Reminder) -> str:
@@ -61,7 +116,7 @@ class ReminderListView(util.interaction.CustomView):
         """reload the reminders and keep the page in range
            (the last page can disappear after a deletion)
         """
-        self.stm.reminders = Connector.get_scoped_reminders(self.stm.scope)
+        self.stm.reminders = load_reminders(self.stm)
         self.stm.page = min(self.stm.page, self.page_count() - 1)
 
 
@@ -96,7 +151,8 @@ class ReminderListView(util.interaction.CustomView):
                 placeholder='Select a reminder to edit',
                 min_values=1,
                 max_values=1,
-                options=reminder_opts
+                options=reminder_opts,
+                row=1  # between the page buttons and the mode buttons
             )
             dd.callback = self.dropdown_callback
             self.add_item(dd)
@@ -198,6 +254,9 @@ class ReminderListing(commands.Cog):
     def _entry(number: int, rem: Reminder, author_id=None) -> str:
         """one reminder of the list: its name, then its date, channel and repetition
 
+        author_id: the user looking at the list ('from' whom, 'for' whom
+        when it's someone else)
+
         The dates are Discord timestamps: each viewer sees them in their own
         language and timezone, and 'in 3 days' stays up to date
         """
@@ -215,7 +274,7 @@ class ReminderListing(commands.Cog):
         else:
             details.append('no next date')
         details.append(f'<#{rem.ch_id}>' if rem.ch_id else 'by DM')
-        if rem.target and rem.target != rem.author:
+        if rem.target and rem.target not in (rem.author, author_id):
             details.append(f'for {rem.target_name or f"<@{rem.target}>"}')
         if author_id and rem.author != author_id:
             details.append(f'from <@{rem.author}>')
@@ -227,7 +286,8 @@ class ReminderListing(commands.Cog):
 
 
     @staticmethod
-    def get_reminder_list_eb(reminders: list[Reminder], page, title_start='Reminders', tz_str='UTC', author_id=None):
+    def get_reminder_list_eb(reminders: list[Reminder], page, title_start='Reminders', tz_str='UTC', author_id=None,
+                             empty_text=EMPTY_TEXTS[MINE]):
         """the list embed: the reminders of the selected page, numbered like the dropdown
 
         Args:
@@ -243,7 +303,7 @@ class ReminderListing(commands.Cog):
         if selectables:
             description = '\n\n'.join(ReminderListing._entry(i + 1, r, author_id) for i, r in enumerate(selectables))
         else:
-            description = 'No pending reminders. Create one with `/remindme`.'
+            description = empty_text
 
         embed = discord.Embed(title=title_start, description=lib.text.shorten(description, lib.text.MAX_DESCRIPTION),
                               color=0x409fe2)
@@ -280,7 +340,7 @@ class ReminderListing(commands.Cog):
 
     async def reminder_stm(self, stm: util.reminderInteraction.STM):
         # first fetch of reminders
-        stm.reminders = Connector.get_scoped_reminders(stm.scope)
+        stm.reminders = load_reminders(stm)
 
         # manually send initial message to init view
         view = ReminderListView(stm)

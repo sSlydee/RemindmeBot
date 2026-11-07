@@ -252,15 +252,20 @@ class FakeDiscord:
         inter = FakeInteraction(self, user_id, target=msg, data={'custom_id': item.custom_id})
         return await self._dispatch(msg, item, inter, must_answer)
 
-    async def press(self, msg: ChatMessage, label=None, emoji=None, user_id=OWNER, must_answer=True):
+    async def press(self, msg: ChatMessage, label=None, emoji=None, user_id=OWNER, must_answer=True, member=None):
         """click a button whose view py-cord doesn't keep (store=False): the
            click reaches the bot through its on_interaction listener only
+
+        member: who clicks, as a server member (with permissions), instead of user_id
         """
         import util.reminderButtons
         item = msg.button(label, emoji)
         if item.disabled:
             raise AssertionError(f'button {label or emoji} is disabled')
-        inter = FakeInteraction(self, user_id, target=msg, data={'custom_id': item.custom_id, 'component_type': 2})
+        inter = FakeInteraction(self, member.id if member else user_id, target=msg,
+                                data={'custom_id': item.custom_id, 'component_type': 2})
+        if member is not None:
+            inter.user = member
         asyncio.get_running_loop().create_task(util.reminderButtons.handle_click(inter))
         await self.settle()
         if must_answer and not inter.response.is_done():

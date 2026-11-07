@@ -1,5 +1,8 @@
 """The buttons under a delivered reminder: snooze, skip the next date, delete
 
+Anyone can snooze (a copy for themselves), only the author can skip, and
+lib.permissions.can_delete_reminder says who can delete.
+
 They keep working after a restart and don't time out: their custom_id holds
 the action and the reminder ('rm:<action>:<kind>:<id>'), and handle_click()
 (called by ReminderModule.on_interaction) acts on it. No view waits in memory.
@@ -16,6 +19,7 @@ from bson.errors import InvalidId
 from dateutil import tz
 
 import lib.input_parser
+import lib.permissions
 import lib.ReminderRepeater
 import lib.timeutil as timeutil
 from lib.Connector import Connector
@@ -185,12 +189,19 @@ async def _skip(interaction: discord.Interaction, interval: IntervalReminder):
 
 
 async def _delete(interaction: discord.Interaction, interval: IntervalReminder):
-    if interaction.user.id != interval.author:
-        await interaction.response.send_message('Only the author of this reminder can delete it.', ephemeral=True)
+    user = interaction.user
+    if not lib.permissions.can_delete_reminder(interval, user):
+        await interaction.response.send_message(
+            'Only the author of this reminder, the member it is for, or a moderator can delete it.', ephemeral=True)
         return
     Connector.delete_interval(interval._id)
+    if user.id == interval.author:
+        by = 'its author'
+    else:
+        by = user.mention
+        log.info(f'reminder {interval._id} of {interval.author} deleted by {user.id}')
     await interaction.response.edit_message(
-        embed=discord.Embed(title='Deleted Reminder', description='The reminder was deleted by its author', color=0x409fe2),
+        embed=discord.Embed(title='Deleted Reminder', description=f'The reminder was deleted by {by}', color=0x409fe2),
         view=delivered_view(interval, deleted=True))
 
 

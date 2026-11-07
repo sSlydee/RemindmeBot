@@ -40,6 +40,21 @@ def can_change_settings(user) -> bool:
     return True
 
 
+def can_moderate(user, guild_id: int) -> bool:
+    """moderators ('Manage Messages') see and delete all the reminders of their server"""
+    return (isinstance(user, discord.Member) and user.guild.id == guild_id
+            and user.guild_permissions.manage_messages)
+
+
+def can_delete_reminder(rem, user) -> bool:
+    """a reminder can be deleted by its author, by the member it is for
+       (not a role), and by the moderators of its server
+    """
+    if user.id in (rem.author, rem.target):
+        return True
+    return bool(rem.g_id) and can_moderate(user, rem.g_id)
+
+
 def missing_settings_permission_embed() -> discord.Embed:
     return discord.Embed(title='Missing Permissions',
                          description='You need the `Manage Server` permission to change the settings of this server.',
