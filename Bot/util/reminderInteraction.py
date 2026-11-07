@@ -26,6 +26,8 @@ class STM():
         self.tz_str:str = None
         # what /reminder_list shows (cogs.ReminderListing: MINE, FOR_ME, SERVER)
         self.mode:str = 'mine'
+        # names of the members the list shows, by id (cogs.ReminderListing.resolve_names)
+        self.names:dict[int, str] = {}
 
 
 class ReminderChannelEdit(util.interaction.CustomView):

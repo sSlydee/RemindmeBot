@@ -3,10 +3,11 @@
 The list and button tests use an in-memory database (mongomock) and
 fakediscord.py.
 """
+import asyncio
 import unittest
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 try:
     import mongomock
@@ -17,6 +18,7 @@ import discord
 
 import cogs.ReminderModule as rm
 from cogs.ReminderCreation import ReminderCreation
+import cogs.ReminderListing
 from cogs.ReminderListing import ReminderListView
 import lib.permissions
 import lib.timeutil as timeutil
@@ -128,6 +130,16 @@ class SharedListTest(unittest.IsolatedAsyncioTestCase):
         Connector.db = mongomock.MongoClient().reminderBot
         Connector.set_timezone(GUILD, 'Europe/Paris')
         self.discord = FakeDiscord()
+        # the owner is in the bot's cache, the stranger is asked to Discord, others left
+        self.guild = SimpleNamespace(
+            id=GUILD, name='Test',
+            get_member=lambda uid: SimpleNamespace(display_name='Owner Name') if uid == OWNER else None,
+            fetch_member=AsyncMock(side_effect=self.fetch_member))
+
+    async def fetch_member(self, user_id):
+        if user_id == STRANGER:
+            return SimpleNamespace(display_name='Stranger*')
+        raise _not_found(10007, 'Unknown Member')
 
     def add(self, msg, author, target, days=2):
         rem = Reminder({'msg': msg, 'g_id': str(GUILD), 'ch_id': '2', 'ch_name': 'general',
@@ -138,16 +150,23 @@ class SharedListTest(unittest.IsolatedAsyncioTestCase):
         return rem
 
     async def open_list(self, user):
-        ctx = SimpleNamespace(author=user, guild=SimpleNamespace(id=GUILD, name='Test'), bot=None)
+        ctx = SimpleNamespace(author=user, guild=self.guild, bot=None)
         stm = ri.STM(ctx, Connector.Scope(is_private=False, guild_id=GUILD, user_id=user.id))
         stm.tz_str = 'Europe/Paris'
         view = ReminderListView(stm)
         return await self.discord.respond(view, embed=view.get_embed(), user_id=user.id, deferred=True)
 
     @staticmethod
-    def listed(msg):
+    def dropdown(msg):
         selects = [item for item in msg.view.children if isinstance(item, discord.ui.Select)]
-        return [option.label for option in selects[0].options] if selects else []
+        return selects[0].options if selects else []
+
+    def listed(self, msg):
+        return [option.label for option in self.dropdown(msg)]
+
+    def authors(self, msg):
+        # each dropdown entry starts with its author
+        return [option.description.split(' · ')[0] for option in self.dropdown(msg)]
 
     async def test_the_member_it_is_for_can_delete_it(self):
         self.add('from the owner', author=OWNER, target=STRANGER)
@@ -159,7 +178,9 @@ class SharedListTest(unittest.IsolatedAsyncioTestCase):
         await self.discord.click(msg, 'For me', user_id=STRANGER)
         self.assertEqual(msg.title, 'Reminders for you · Test')
         self.assertEqual(self.listed(msg), ['from the owner'])
-        self.assertIn(f'from <@{OWNER}>', msg.embed.description)
+        # by name: a mention only shows one when the viewer's Discord knows the member
+        self.assertIn('· from Owner Name', msg.embed.description)
+        self.assertEqual(self.authors(msg), ['from Owner Name'])
 
         # delete only: it isn't theirs to edit
         await self.discord.choose(msg, PICK_REMINDER, '0', user_id=STRANGER)
@@ -187,6 +208,9 @@ class SharedListTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(msg.title, 'All reminders · Test')
         self.assertEqual(self.listed(msg), ['mine', 'from the owner', 'from someone'])
         self.assertEqual(msg.button('Whole server').style, discord.ButtonStyle.primary)
+        self.assertEqual(self.authors(msg), ['from you', 'from Owner Name', 'from Stranger*'])
+        for author in ('from you', 'from Owner Name', 'from Stranger\\*'):
+            self.assertIn(author, msg.embed.description)
 
         # their own reminder stays editable, the others can only be deleted
         await self.discord.choose(msg, PICK_REMINDER, '0', user_id=MODERATOR)
@@ -201,6 +225,35 @@ class SharedListTest(unittest.IsolatedAsyncioTestCase):
 
         await self.discord.click(msg, 'My reminders', user_id=MODERATOR)
         self.assertEqual(self.listed(msg), ['mine'])
+
+    async def test_former_member(self):
+        self.add('left behind', author=USER, target=USER)
+        msg = await self.open_list(_member(MODERATOR, moderator=True))
+        await self.discord.click(msg, 'Whole server', user_id=MODERATOR)
+        self.assertEqual(self.authors(msg), ['from a former member'])
+        self.assertIn('from a former member', msg.embed.description)
+
+    async def test_member_it_is_for_by_name(self):
+        rem = self.add('for the stranger', author=OWNER, target=STRANGER)
+        Connector.db.reminders.update_one({'_id': rem._id}, {'$set': {'target_name': f'<@{STRANGER}>'}})
+        msg = await self.open_list(_member(MODERATOR, moderator=True))
+        await self.discord.click(msg, 'Whole server', user_id=MODERATOR)
+        self.assertIn('· for Stranger\\* · from Owner Name', msg.embed.description)
+
+    async def test_slow_name_lookup(self):
+        # the click is still answered in time, with mentions instead of names
+        async def slow(user_id):
+            await asyncio.sleep(5)
+        self.guild.fetch_member = AsyncMock(side_effect=slow)
+        self.add('from someone', author=STRANGER, target=STRANGER)
+        msg = await self.open_list(_member(MODERATOR, moderator=True))
+        with patch.object(cogs.ReminderListing, 'NAME_LOOKUP_TIMEOUT', 0.05):
+            inter = await self.discord.click(msg, 'Whole server', user_id=MODERATOR, must_answer=False)
+            await asyncio.sleep(0.2)
+            await self.discord.settle()
+        self.assertTrue(inter.response.is_done())
+        self.assertIn(f'from <@{STRANGER}>', msg.embed.description)
+        self.assertEqual(self.authors(msg), ['from another member'])
 
     async def test_other_members_have_no_server_view(self):
         msg = await self.open_list(_member(STRANGER))

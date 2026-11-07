@@ -8,4 +8,7 @@ class Consts:
 
     # where users report bugs (this fork, not the public bot of the original author)
     github_url = 'https://github.com/sSlydee/RemindmeBot'
+
+    # Discord error code: the user is not a member of the server
+    unknown_member = 10007
     col_identity_lime = 0xe4ff1e

@@ -69,6 +69,14 @@ class ListEmbedTest(unittest.TestCase):
     def test_someone_else_s_reminder(self):
         self.assertIn('from <@3>', self.entry(_reminder(), author_id=9))
 
+    def test_names_instead_of_mentions(self):
+        rem = _reminder(author='4', target='5', target_name='<@5>')
+        details = ReminderListing._entry(1, rem, 3, names={4: 'Al*x', 5: 'Bob'}).splitlines()[1]
+        self.assertTrue(details.endswith('· for Bob · from Al\\*x'), details)
+
+    def test_own_reminder_in_the_server_view(self):
+        self.assertTrue(ReminderListing._entry(1, _reminder(), 3, all_authors=True).endswith('· <#22> · from you'))
+
     def test_reminder_for_the_viewer(self):
         # in 'For me': who it is from, not again for whom
         details = self.entry(_reminder(author='4', target='3', target_name='@Me')).splitlines()[1]

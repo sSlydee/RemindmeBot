@@ -32,9 +32,6 @@ DOWN_AFTER = 3
 # (a run that found Discord unreachable doesn't count)
 LOOP_STALE_AFTER = timedelta(minutes=3)
 
-UNKNOWN_MEMBER = 10007  # Discord error code
-
-
 class AuthorLeft(Exception):
     """the author of a server reminder is no longer a member of that server"""
 
@@ -205,7 +202,7 @@ class ReminderModule(commands.Cog):
         try:
             return await guild.fetch_member(user_id)
         except discord.NotFound as e:
-            if e.code == UNKNOWN_MEMBER:
+            if e.code == Consts.unknown_member:
                 raise AuthorLeft(user_id) from e
             return None
         except discord.Forbidden:

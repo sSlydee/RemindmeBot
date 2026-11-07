@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import math
 from dateutil import tz
@@ -13,6 +14,7 @@ import lib.input_parser
 
 import util.interaction
 import util.reminderInteraction
+from util.consts import Consts
 #import lib.ReminderRepeater
 
 
@@ -40,6 +42,47 @@ def load_reminders(stm) -> list[Reminder]:
     if stm.mode == SERVER:
         return Connector.get_guild_reminders(stm.scope.guild_id)
     return Connector.get_scoped_reminders(stm.scope)
+
+
+# looking up names must not delay the answer to a click past Discord's 3 seconds
+NAME_LOOKUP_TIMEOUT = 1.5
+
+
+async def resolve_names(stm, reminders: list[Reminder]):
+    """the names of the members a page shows (authors, members reminders are
+       for) as plain text, in stm.names: a mention only shows a name when the
+       viewer's Discord already knows that member, and the dropdown can't show
+       mentions at all. Names not found in time are shown as mentions
+    """
+    guild = stm.ctx.guild
+    if guild is None or stm.scope.is_private:
+        return
+    ids = {rem.author for rem in reminders}
+    # a reminder for a member stores its mention as target name (for a role: the role's name)
+    ids |= {rem.target for rem in reminders if rem.target_name in (f'<@{rem.target}>', f'<@!{rem.target}>')}
+    ids -= set(stm.names) | {stm.scope.user_id, None}
+    if not ids:
+        return
+
+    async def lookup(user_id):
+        member = guild.get_member(user_id)
+        if member is None:
+            try:
+                member = await guild.fetch_member(user_id)
+            except discord.NotFound as e:
+                if e.code == Consts.unknown_member:
+                    stm.names[user_id] = 'a former member'
+                return
+        stm.names[user_id] = member.display_name
+
+    try:
+        results = await asyncio.wait_for(asyncio.gather(*(lookup(uid) for uid in ids), return_exceptions=True),
+                                         NAME_LOOKUP_TIMEOUT)
+    except asyncio.TimeoutError:
+        log.debug(f'member names: {len(ids) - len(set(stm.names) & ids)} not found in time')
+        return
+    for error in (r for r in results if isinstance(r, Exception)):
+        log.debug(f'member name not found: {error!r}')
 
 
 class ReminderListView(util.interaction.CustomView):
@@ -74,9 +117,24 @@ class ReminderListView(util.interaction.CustomView):
             self.stm.mode = mode
             self.stm.page = 0
             self.style_mode_buttons()
-            self.update_dropdown()
+            await self.reload()
             await self.show(interaction, embed=self.get_embed(), view=self)
         return callback
+
+    async def reload(self, page_step=0):
+        """reload the reminders, move by page_step pages, then build the page
+           with the names of the members it shows
+        """
+        self.refresh_reminders()
+        self.stm.page = (self.stm.page + page_step) % self.page_count()
+        await resolve_names(self.stm, ReminderListing.get_reminders_on_page(self.stm.reminders, self.stm.page))
+        self.update_dropdown(refresh=False)
+
+    def name_of(self, user_id: int) -> str:
+        """a member as plain text (the dropdown can't show mentions)"""
+        if user_id == self.stm.scope.user_id:
+            return 'you'
+        return self.stm.names.get(user_id) or 'another member'
 
     def get_embed(self) -> discord.Embed:
 
@@ -90,12 +148,18 @@ class ReminderListView(util.interaction.CustomView):
             title_str = f'Your reminders · {self.stm.ctx.guild.name}'
 
         return ReminderListing.get_reminder_list_eb(self.stm.reminders, self.stm.page, title_str, self.stm.tz_str,
-                                                    self.stm.scope.user_id, empty_text=EMPTY_TEXTS[self.stm.mode])
+                                                    self.stm.scope.user_id, empty_text=EMPTY_TEXTS[self.stm.mode],
+                                                    names=self.stm.names, all_authors=self.stm.mode == SERVER)
 
-    
+
     def option_description(self, rem: Reminder) -> str:
-        """date and channel under a dropdown entry (plain text: no Discord timestamps there)"""
+        """date and channel under a dropdown entry, and its author in the views
+           with other members' reminders (plain text: no Discord timestamps or
+           mentions there)
+        """
         parts = []
+        if self.stm.mode in (FOR_ME, SERVER):
+            parts.append(f'from {self.name_of(rem.author)}')
         if getattr(rem, 'paused', False):
             parts.append('⏸️ paused')
         if rem.at:
@@ -161,20 +225,14 @@ class ReminderListView(util.interaction.CustomView):
 
     @discord.ui.button(emoji='⏪', style=discord.ButtonStyle.secondary)
     async def prev_page(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        self.refresh_reminders()
-        self.stm.page = (self.stm.page - 1) % self.page_count()
-
-        self.update_dropdown(refresh=False)
+        await self.reload(page_step=-1)
         await self.show(interaction, embed=self.get_embed(), view=self)
 
 
 
     @discord.ui.button(emoji='⏩', style=discord.ButtonStyle.secondary)
     async def next_page(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        self.refresh_reminders()
-        self.stm.page = (self.stm.page + 1) % self.page_count()
-
-        self.update_dropdown(refresh=False)
+        await self.reload(page_step=1)
         await self.show(interaction, embed=self.get_embed(), view=self)
 
 
@@ -190,7 +248,7 @@ class ReminderListView(util.interaction.CustomView):
         if not values or int(values[0]) >= len(page_rems):
             # nothing selected, or the list is not long enough anymore
             # update ui to show the current list
-            self.update_dropdown()
+            await self.reload()
             await self.show(interaction, embed=self.get_embed(), view=self)
             return
         sel = values[0]
@@ -204,7 +262,7 @@ class ReminderListView(util.interaction.CustomView):
             return
 
         # back to the list, reloaded (the reminder may be deleted or changed)
-        self.update_dropdown()
+        await self.reload()
         await self.show(embed=self.get_embed(), view=self)
 
 
@@ -251,15 +309,21 @@ class ReminderListing(commands.Cog):
 
 
     @staticmethod
-    def _entry(number: int, rem: Reminder, author_id=None) -> str:
+    def _entry(number: int, rem: Reminder, author_id=None, names=None, all_authors=False) -> str:
         """one reminder of the list: its name, then its date, channel and repetition
 
         author_id: the user looking at the list ('from' whom, 'for' whom
         when it's someone else)
+        names: the names of members by id (resolve_names), else mentions
+        all_authors: also 'from you' on the user's own reminders
 
         The dates are Discord timestamps: each viewer sees them in their own
         language and timezone, and 'in 3 days' stays up to date
         """
+        def who(user_id, fallback):
+            name = (names or {}).get(user_id)
+            return discord.utils.escape_markdown(name) if name else fallback
+
         is_interval = isinstance(rem, IntervalReminder)
         paused = getattr(rem, 'paused', False)
 
@@ -275,9 +339,11 @@ class ReminderListing(commands.Cog):
             details.append('no next date')
         details.append(f'<#{rem.ch_id}>' if rem.ch_id else 'by DM')
         if rem.target and rem.target not in (rem.author, author_id):
-            details.append(f'for {rem.target_name or f"<@{rem.target}>"}')
+            details.append(f'for {who(rem.target, rem.target_name or f"<@{rem.target}>")}')
         if author_id and rem.author != author_id:
-            details.append(f'from <@{rem.author}>')
+            details.append(f'from {who(rem.author, f"<@{rem.author}>")}')
+        elif all_authors:
+            details.append('from you')
 
         lines = [head, '\u2003' + ' · '.join(details)]
         if is_interval:
@@ -287,7 +353,7 @@ class ReminderListing(commands.Cog):
 
     @staticmethod
     def get_reminder_list_eb(reminders: list[Reminder], page, title_start='Reminders', tz_str='UTC', author_id=None,
-                             empty_text=EMPTY_TEXTS[MINE]):
+                             empty_text=EMPTY_TEXTS[MINE], names=None, all_authors=False):
         """the list embed: the reminders of the selected page, numbered like the dropdown
 
         Args:
@@ -301,7 +367,8 @@ class ReminderListing(commands.Cog):
         selectables = ReminderListing.get_reminders_on_page(reminders, page)
 
         if selectables:
-            description = '\n\n'.join(ReminderListing._entry(i + 1, r, author_id) for i, r in enumerate(selectables))
+            description = '\n\n'.join(ReminderListing._entry(i + 1, r, author_id, names, all_authors)
+                                      for i, r in enumerate(selectables))
         else:
             description = empty_text
 
@@ -339,12 +406,10 @@ class ReminderListing(commands.Cog):
     # =====================
 
     async def reminder_stm(self, stm: util.reminderInteraction.STM):
-        # first fetch of reminders
-        stm.reminders = load_reminders(stm)
-
-        # manually send initial message to init view
+        # manually send initial message to init view (it loads the reminders)
         view = ReminderListView(stm)
-        eb = view.get_embed()    
+        await view.reload()  # with the names of the members it shows
+        eb = view.get_embed()
         view.origin = await stm.ctx.respond(embed=eb, view=view, ephemeral=True)
 
 
