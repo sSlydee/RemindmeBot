@@ -2,7 +2,7 @@
 import unittest
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 try:
     import mongomock
@@ -91,14 +91,57 @@ class DeliveryTest(unittest.IsolatedAsyncioTestCase):
         self.fail_with(_server_error())
         with self.assertLogs('Remindme.Core', 'WARNING'):
             await self.run_reminders()
-        # tried once, both kept for the next run
-        self.assertEqual(self.cog.print_reminder.await_count, 1)
+        # both tried, both kept for the next run
+        self.assertEqual(self.cog.print_reminder.await_count, 2)
         self.assertEqual(Connector.db.reminders.count_documents({}), 2)
 
         self.cog.print_reminder = AsyncMock(side_effect=self._record)
         await self.run_reminders()
         self.assertEqual(sorted(self.sent), ['first', 'second'])
         self.assertEqual(Connector.db.reminders.count_documents({}), 0)
+
+    async def test_one_failing_reminder_does_not_block_the_others(self):
+        self.add_reminder('bad')
+        for i in range(4):
+            self.add_reminder(f'good {i}')
+
+        async def send(rem):
+            if rem.msg == 'bad':
+                raise _server_error()
+            self.sent.append(rem.msg)
+        self.cog.print_reminder = AsyncMock(side_effect=send)
+        with self.assertLogs('Remindme.Core', 'WARNING'):
+            await self.run_reminders()
+        self.assertEqual(sorted(self.sent), ['good 0', 'good 1', 'good 2', 'good 3'])
+        self.assertEqual([r['msg'] for r in Connector.db.reminders.find({})], ['bad'])
+
+    async def test_discord_down_stops_the_run_and_the_heartbeat(self):
+        for i in range(5):
+            self.add_reminder(f'r{i}')
+        self.cog.loop_done = {name: timeutil.utcnow() - timedelta(minutes=10) for name in self.cog.loop_done}
+        self.fail_with(_server_error())
+        with self.assertLogs('Remindme.Core', 'WARNING'):
+            await self.run_reminders()
+        # 3 failures in a row: the other 2 aren't tried, all kept, no OK for the monitor
+        self.assertEqual(self.cog.print_reminder.await_count, rm.DOWN_AFTER)
+        self.assertEqual(Connector.db.reminders.count_documents({}), 5)
+        self.assertEqual(self.cog.heartbeat.pushes, 0)
+
+    async def test_one_failing_interval_does_not_block_the_others(self):
+        bad = self.add_interval('bad')
+        good = self.add_interval('good')
+
+        async def send(rem):
+            if rem.msg == 'bad':
+                raise _server_error()
+            self.sent.append(rem.msg)
+        self.cog.print_reminder = AsyncMock(side_effect=send)
+        due = Connector.get_interval_by_id(bad._id).at
+        with self.assertLogs('Remindme.Core', 'WARNING'):
+            await self.run_intervals()
+        self.assertEqual(self.sent, ['good'])
+        self.assertEqual(Connector.get_interval_by_id(bad._id).at, due)
+        self.assertGreater(Connector.get_interval_by_id(good._id).at, timeutil.utcnow())
 
     async def test_network_errors_are_retried(self):
         self.add_reminder('hello')
@@ -198,8 +241,16 @@ class DeliveryTest(unittest.IsolatedAsyncioTestCase):
         private.at = rem.at
         private._id = Connector.add_interval(private)
 
+        broken = IntervalReminder({'msg': 'broken', 'g_id': str(GUILD), 'author': str(USER), 'target': str(USER)})
+        broken.first_at = datetime(2026, 1, 2, 7, 0)
+        broken.rrules = ['RRULE:FREQ=NOPE']
+        broken.at = rem.at
+        broken._id = Connector.add_interval(broken)
+
         Connector.set_timezone(GUILD, 'America/New_York')
-        self.assertEqual(lib.ReminderRepeater.reschedule_instance(GUILD), 1)
+        # the broken rule is logged and skipped, the others move on
+        with self.assertLogs('Remindme.Repeater', 'ERROR'):
+            self.assertEqual(lib.ReminderRepeater.reschedule_instance(GUILD), 1)
 
         moved = Connector.get_interval_by_id(rem._id).at
         # 07:00 in New York is 5 or 6 hours later than 07:00 in Paris
@@ -220,6 +271,24 @@ class SendLongTest(unittest.IsolatedAsyncioTestCase):
         self.assertIs(calls[-1].kwargs['view'], view)
         self.assertNotIn('view', calls[0].kwargs)
         self.assertEqual(calls[0].kwargs['allowed_mentions'], 'mentions')
+
+    async def test_partly_sent_text_is_not_sent_again(self):
+        dest = SimpleNamespace(send=AsyncMock(side_effect=['first', _server_error()]))
+        with self.assertLogs('Remindme.Core', 'ERROR'):
+            sent = await rm.send_long(dest, 'x' * 3000)
+        self.assertEqual(sent, 'first')
+
+    async def test_nothing_sent_is_retried(self):
+        dest = SimpleNamespace(send=AsyncMock(side_effect=_server_error()))
+        with self.assertRaises(discord.DiscordServerError):
+            await rm.send_long(dest, 'x' * 3000)
+
+    async def test_mention_is_not_alone(self):
+        dest = SimpleNamespace(send=AsyncMock(return_value='msg'))
+        await rm.send_long(dest, '<@3> ' + 'A' * 3000)
+        first = dest.send.await_args_list[0].args[0]
+        self.assertEqual(len(first), 2000)
+        self.assertTrue(first.startswith('<@3> AAA'))
 
     async def test_embed_without_text(self):
         dest = SimpleNamespace(send=AsyncMock(return_value='msg'))

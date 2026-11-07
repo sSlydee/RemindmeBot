@@ -21,6 +21,7 @@ import util.interaction
 import util.reminderInteraction as ri
 from cogs.ReminderListing import ReminderListView
 from cogs.ReminderCreation import NewReminderView
+import unit_tests.fakediscord as fakediscord
 from unit_tests.fakediscord import FakeDiscord, ChatMessage, OWNER, STRANGER
 
 GUILD = 1
@@ -56,9 +57,10 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         return lib.ReminderRepeater.add_rules(self.add_reminder(), rrule='DTSTART:20260101T070000\nRRULE:FREQ=WEEKLY')
 
     async def open_list(self) -> ChatMessage:
+        # /reminder_list defers, then answers with a followup
         self.stm.reminders = Connector.get_scoped_reminders(self.stm.scope)
         view = ReminderListView(self.stm)
-        return await self.discord.respond(view, embed=view.get_embed())
+        return await self.discord.respond(view, embed=view.get_embed(), deferred=True)
 
     async def open_interval_menu(self) -> ChatMessage:
         """list -> first reminder -> Set Interval (Edit Interval)"""
@@ -178,6 +180,86 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         [interval] = self.stored_intervals()
         # 09:00 in New York is 15:00 in Paris, the rule frame
         self.assertIn('T150000', interval['rrules'][0])
+
+    async def test_rule_pasted_on_one_line(self):
+        # the popup field is a single line: the generator's line break becomes a space
+        self.add_reminder()
+        msg = await self.open_interval_menu()
+        await self.discord.click(msg, 'Add Repeating Rule')
+        await self.discord.submit('DTSTART:20261110T090000Z\nRRULE:FREQ=WEEKLY;BYDAY=TU')
+        self.assertEqual(msg.title, 'New Rrule')
+        await self.discord.click(msg, 'Confirm')
+        [interval] = self.stored_intervals()
+        # 09:00 UTC is 10:00 in Paris, the rule frame
+        self.assertIn('T100000', interval['rrules'][0])
+
+    async def test_two_menus_on_the_same_reminder(self):
+        self.add_reminder()
+        first = await self.open_interval_menu()
+        second = await self.open_interval_menu()
+
+        await self.discord.choose(first, QUICK_REPEAT, 'weekly')
+        await self.discord.click(first, 'Confirm')
+        # the second menu still shows the single reminder, which is now an interval
+        await self.discord.choose(second, QUICK_REPEAT, 'daily')
+        await self.discord.click(second, 'Confirm')
+
+        self.assertEqual(second.title, 'Menu closed')
+        self.assertIsNone(second.view)
+        [interval] = self.stored_intervals()
+        self.assertIn('FREQ=WEEKLY', interval['rrules'][0])
+
+    async def test_rule_deleted_in_another_menu(self):
+        self.add_weekly_interval()
+        first = await self.open_interval_menu()
+        second = await self.open_interval_menu()
+        for msg in (first, second):
+            await self.discord.choose(msg, PICK_RULE, '0')
+            await self.discord.click(msg, 'Delete Selected')
+            await self.discord.click(msg, 'Confirm')
+        # the first one made it a single reminder again, the second can't remove more
+        self.assertEqual(second.title, 'Menu closed')
+        self.assertEqual(len(self.stored_reminders()), 1)
+        self.assertEqual(self.stored_intervals(), [])
+
+    async def test_closed_popup_leaves_the_store(self):
+        self.add_reminder()
+        with patch.object(util.interaction, 'POPUP_TIMEOUT', 0.2):
+            msg = await self.open_interval_menu()
+            await self.discord.click(msg, 'Add Repeating Rule')
+            self.assertEqual(len(self.discord.modal_store._modals), 1)
+            await asyncio.sleep(0.4)
+            await self.discord.settle()
+        self.assertEqual(len(self.discord.modal_store._modals), 0)
+
+    async def test_menu_closed_before_its_token_dies(self):
+        # last edit, then a popup that is closed without submitting:
+        # py-cord's timeout restarts, but the token to edit the menu doesn't
+        self.add_reminder()
+        with patch.object(util.interaction, 'TOKEN_LIFETIME', 0.3), \
+             patch.object(fakediscord, 'TOKEN_LIFETIME', 0.5):
+            msg = await self.open_list()
+            list_view = msg.view
+            await self.discord.choose(msg, PICK_REMINDER, '0')
+            await asyncio.sleep(0.2)
+            await self.discord.click(msg, 'Edit')
+            await asyncio.sleep(0.2)
+            await self.discord.settle()
+        self.assertTrue(all(item.disabled for item in msg.view.children))
+        self.assertTrue(list_view.is_finished())
+
+    async def test_late_edit_popup_tells_what_was_not_saved(self):
+        self.add_reminder('old text')
+        with patch.object(util.interaction, 'MENU_TIMEOUT', 0.2):
+            msg = await self.open_list()
+            await self.discord.choose(msg, PICK_REMINDER, '0')
+            await self.discord.click(msg, 'Edit')
+            await asyncio.sleep(0.4)
+            await self.discord.submit('', 'new text', 'not a url', '')
+        reply = self.discord.last_message().content
+        self.assertIn('Saved', reply)
+        self.assertIn('not a valid URL', reply)
+        self.assertEqual(self.stored_reminders()[0]['msg'], 'new text')
 
     async def test_abort_saves_nothing(self):
         self.add_reminder()

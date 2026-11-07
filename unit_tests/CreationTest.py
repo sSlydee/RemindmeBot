@@ -146,6 +146,30 @@ class CreationTest(unittest.IsolatedAsyncioTestCase):
         stored = Connector.get_interval_by_id(rem._id)
         self.assertEqual(stored.exdates, [datetime(2026, 12, 4, 7, 0), datetime(2026, 12, 11, 7, 0)])
 
+    def test_plain_reminder_changed_in_another_menu(self):
+        rem = Reminder({'msg': 'x', 'g_id': str(GUILD), 'ch_id': '2', 'author': str(OWNER), 'target': str(OWNER)})
+        rem.created_at = timeutil.utcnow()
+        rem.at = timeutil.utcnow() + timedelta(days=2)
+        rem._id = Connector.add_reminder(rem)
+        menu_a = Connector.get_reminder_by_id(rem._id)
+        menu_b = Connector.get_reminder_by_id(rem._id)
+
+        lib.ReminderRepeater.add_rules(menu_a, rrule='DTSTART:20260101T070000\nRRULE:FREQ=WEEKLY')
+        with self.assertRaises(lib.ReminderRepeater.ReminderChanged):
+            lib.ReminderRepeater.add_rules(menu_b, rrule='DTSTART:20260101T080000\nRRULE:FREQ=DAILY')
+        self.assertEqual(Connector.db.intervals.count_documents({}), 1)
+
+    def test_deleted_interval_is_not_brought_back(self):
+        rem = self.add_interval()
+        menu = Connector.get_interval_by_id(rem._id)
+        Connector.delete_interval(rem._id)
+        with self.assertRaises(lib.ReminderRepeater.ReminderChanged):
+            lib.ReminderRepeater.rm_rules(menu, rule_idx=0)
+        with self.assertRaises(lib.ReminderRepeater.ReminderChanged):
+            lib.ReminderRepeater.add_rules(menu, exdate=datetime(2026, 12, 4, 7, 0))
+        self.assertEqual(Connector.db.reminders.count_documents({}), 0)
+        self.assertEqual(Connector.db.intervals.count_documents({}), 0)
+
     def test_rule_deleted_in_an_old_menu_is_the_right_one(self):
         rem = self.add_interval()
         lib.ReminderRepeater.add_rules(rem, exdate=datetime(2026, 12, 4, 7, 0))

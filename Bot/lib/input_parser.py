@@ -1,4 +1,6 @@
+import itertools
 import re
+import threading
 import zoneinfo
 import lib.timeutil as timeutil
 from datetime import datetime, timedelta
@@ -485,6 +487,68 @@ def _split_dtstart(rrule_str: str, tz_str: str):
 
 # reminders can't repeat more often than this (no spam)
 MIN_REPEAT_GAP = timedelta(minutes=10)
+# a rule must have a date within this many years from its start
+CHECK_YEARS = 10
+# seconds to find the first dates of a rule
+CHECK_TIMEOUT = 1.0
+
+
+_MAX_MONTH_DAYS = (31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+
+
+def _impossible_month_day(rule) -> bool:
+    """a day of the month that none of the rule's months has (30 February)"""
+    days = rule._original_rule.get('bymonthday')
+    if not days:
+        return False  # none, or the day of DTSTART: a real date
+    longest = max(_MAX_MONTH_DAYS[month - 1] for month in (rule._bymonth or range(1, 13)))
+    return all(abs(day) > longest for day in days)
+
+
+def _first_dates(rule, dtstart, count=100) -> list:
+    """the first dates of a rule, within CHECK_YEARS
+
+    dateutil only stops at UNTIL once it found a date: an impossible rule
+    (30 February) is searched until the year 9999, taking seconds. The search
+    runs in a thread, so that it doesn't block the bot past CHECK_TIMEOUT
+    (the thread finishes on its own).
+
+    Raises:
+        TimeoutError: no answer within CHECK_TIMEOUT
+    """
+    horizon = dtstart + relativedelta(years=CHECK_YEARS)
+    probe = rule.replace(count=None, until=min(rule._until, horizon) if rule._until else horizon)
+    result = {}
+
+    def search():
+        try:
+            result['dates'] = list(itertools.islice(probe, count))
+        except Exception as e:
+            result['error'] = e
+
+    worker = threading.Thread(target=search, name='rule-check', daemon=True)
+    worker.start()
+    worker.join(CHECK_TIMEOUT)
+    if worker.is_alive():
+        raise TimeoutError()
+    if 'error' in result:
+        raise result['error']
+    return result['dates']
+
+# where a property starts, also when glued to the previous one ('...ZRRULE:FREQ=...')
+_PROPERTY_START_RE = re.compile(r'(?=(?:DTSTART|RRULE|EXRULE|RDATE|EXDATE)[:;])', re.IGNORECASE)
+
+
+def _split_properties(rrule_str: str) -> str:
+    """the rule text with one property per line
+
+    dateutil accepts properties separated by spaces, but the DTSTART and UNTIL
+    handling here reads the text line by line
+    """
+    parts = []
+    for token in rrule_str.split():
+        parts.extend(part for part in _PROPERTY_START_RE.split(token) if part)
+    return '\n'.join(parts)
 
 
 def rrule_normalize(rrule_str, dtstart, tz_str='UTC'):
@@ -502,6 +566,9 @@ def rrule_normalize(rrule_str, dtstart, tz_str='UTC'):
 
     if 'interval=0' in rrule_str.lower():
         return (None, 'Please specify an interval greater than 0')
+
+    # the popup field is a single line: pasted line breaks arrive as spaces (or not at all)
+    rrule_str = _split_properties(rrule_str)
 
     try:
         rrule_str, own_start = _split_dtstart(rrule_str, tz_str)
@@ -522,6 +589,10 @@ def rrule_normalize(rrule_str, dtstart, tz_str='UTC'):
     except Exception as e:
         return None, str(e)
 
+    if rule._dtstart is not None and rule._dtstart.tzinfo is not None:
+        # the rule frame is naive local time
+        return None, 'Unsupported DTSTART: use e.g. `DTSTART:20261110T090000Z` or `DTSTART;TZID=Europe/Paris:20261110T090000`'
+
     if until:
         try:
             rule = rule.replace(until=until)
@@ -531,34 +602,29 @@ def rrule_normalize(rrule_str, dtstart, tz_str='UTC'):
 
 
     norm_str = str(rule).lower()
-    
 
     if 'minutely' in norm_str:
         return (None, 'Minutely repetitions are not supported by this bot (yet)')
     elif 'secondly' in norm_str:
         return (None, 'Secondly repetitions would be classified as spam by the discord TOS.')
 
-    # nor with a list of minutes or hours (FREQ=HOURLY;BYMINUTE=0,5,10,...)
-    previous = None
-    for i, occurrence in enumerate(rule):
-        if i >= 100:
-            break
-        if previous and occurrence - previous < MIN_REPEAT_GAP:
-            return (None, f'A reminder can repeat every {int(MIN_REPEAT_GAP.total_seconds() // 60)} minutes at most')
-        previous = occurrence
-    
-    
-    # make sure, that the rule is a valid rule
-    # sometimes logical errors (like asking for hour 40) can slip through the parser
-    # they don't immediately violate the rfc, but are logically not possible to achieve
-    
-    ruleset = rr.rruleset()
-    ruleset.rdate(dtstart)
-    ruleset.rrule(rr.rrulestr(norm_str))
-    
+    if _impossible_month_day(rule):
+        return (None, f'The rule `{norm_str}` has no date: none of its months has that day')
+
     try:
-        ruleset.after(dtstart)
-    except TypeError:
-        return (None, f'The rulestring {norm_str} cannot be satisfied')
-    
+        dates = _first_dates(rule, dtstart)
+    except TimeoutError:
+        return (None, f'The rule `{norm_str}` takes too long to check, it may have no date at all '\
+                      '(e.g. on the 30th of February)')
+    except Exception as e:
+        return None, str(e)
+
+    if not dates:
+        return (None, f'The rule `{norm_str}` has no date in the future (checked {CHECK_YEARS} years)')
+
+    # not more often than MIN_REPEAT_GAP, also with a list (FREQ=HOURLY;BYMINUTE=0,5,10,...)
+    for previous, occurrence in zip(dates, dates[1:]):
+        if occurrence - previous < MIN_REPEAT_GAP:
+            return (None, f'A reminder can repeat every {int(MIN_REPEAT_GAP.total_seconds() // 60)} minutes at most')
+
     return rule, None

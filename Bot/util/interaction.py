@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta
 import lib.timeutil as timeutil
 
@@ -13,6 +14,29 @@ log = logging.getLogger('Remindme')
 # menus stay usable this long after their last use: a bit less than the 15 minutes
 # an interaction token lives, so the timeout can still disable the buttons
 MENU_TIMEOUT = 14*60
+# a popup left open is dropped after this time: a late submit still saves
+# (the menu tells it expired), a much later one gets "interaction failed"
+POPUP_TIMEOUT = 30*60
+# a menu is closed this long after its last edit at the latest: later, the token
+# it is edited with is dead (clicks that only open a popup bring no new one)
+TOKEN_LIFETIME = 15*60 - 30
+
+
+async def open_popup(interaction: discord.Interaction, popup: discord.ui.Modal):
+    """show a popup (modal) as the answer to interaction"""
+    await interaction.response.send_modal(popup)
+    # py-cord 2.8 keeps a timed out popup in its store forever (and the menu it
+    # calls back): remember where it is, forget_popup() drops it
+    store = getattr(getattr(interaction, '_state', None), '_modal_store', None)
+    popup.store_key = (store, interaction.user.id)
+
+
+def forget_popup(popup: discord.ui.Modal):
+    """drop a popup opened with open_popup() from py-cord's store"""
+    store, user_id = getattr(popup, 'store_key', (None, None))
+    popups = getattr(store, '_modals', None)
+    if popups is not None:
+        popups.pop((user_id, popup.custom_id), None)
 
 
 async def edit_menu(target, **kwargs):
@@ -67,6 +91,7 @@ class CustomView(discord.ui.View):
         self.last_interaction: discord.Interaction = None
         # latest interaction that edited the message
         self._handle: discord.Interaction = None
+        self._token_guard: asyncio.TimerHandle = None
         # True once this menu, or one of its sub-menus, timed out
         self.expired = False
         # when set, only this user can use the components
@@ -117,6 +142,35 @@ class CustomView(discord.ui.View):
         await edit_menu(target, **kwargs)
         if getattr(target, 'response', None) is not None:
             self._handle = target
+            self._arm_token_guard()
+
+
+    def _arm_token_guard(self):
+        """close this menu before the token of _handle dies
+
+        py-cord's timeout restarts with every click, also with clicks that only
+        open a popup: those bring no new token to edit the message with
+        """
+        if self._token_guard is not None:
+            self._token_guard.cancel()
+        loop = asyncio.get_running_loop()
+        self._token_guard = loop.call_later(TOKEN_LIFETIME, lambda: loop.create_task(self._token_expiring()))
+
+
+    async def _token_expiring(self):
+        if self.is_finished() or self.timeout is None:
+            # over, or paused while one of its sub-menus shows (it has its own guard)
+            return
+        self.expired = True
+        self.stop()
+        await self.on_timeout()
+
+
+    async def close(self, text: str):
+        """end this menu and the ones it was opened from, with a message"""
+        self.expired = True
+        self.stop()
+        await self.show(embed=discord.Embed(title='Menu closed', description=text, color=0xff0000), view=None)
 
 
     async def open_child(self, interaction: discord.Interaction, child: 'CustomView', **kwargs) -> bool:
@@ -164,8 +218,10 @@ class CustomView(discord.ui.View):
         log.debug(f'{type(self).__name__} timed out, could not disable its buttons')
 
 
-    async def answer_expired(self, interaction: discord.Interaction, saved=False) -> bool:
+    async def answer_expired(self, interaction: discord.Interaction, saved=False, info='') -> bool:
         """tell the user this menu is over (for popups submitted after the timeout)
+
+        info: what the popup couldn't save
 
         Returns:
             bool: True if the menu is over
@@ -174,6 +230,8 @@ class CustomView(discord.ui.View):
             return False
         text = 'Saved. ' if saved else ''
         text += 'This menu has expired, open it again with `/reminder_list`.'
+        if info:
+            text += f'\n{info}'
         await interaction.response.send_message(text, ephemeral=True)
         return True
 

@@ -152,9 +152,17 @@ class RuleMode(Enum):
 
 
 class ReportErrors:
-    """popups: log errors to the bot log and tell the user"""
+    """popups: log errors to the bot log and tell the user,
+       leave py-cord's store when timed out (see util.interaction.open_popup)
+    """
     async def on_error(self, error: Exception, interaction: discord.Interaction):
         await util.interaction.report_error(error, interaction, type(self).__name__)
+
+    async def on_timeout(self):
+        util.interaction.forget_popup(self)
+
+
+CHANGED_MEANWHILE = 'This reminder was changed in another menu, delivered or deleted meanwhile. Open `/reminder_list` again.'
 
 
 class RuleModal(ReportErrors, discord.ui.DesignerModal):
@@ -164,8 +172,8 @@ class RuleModal(ReportErrors, discord.ui.DesignerModal):
     (a 'designer' modal: a plain Modal only holds text fields)
     """
     def __init__(self, field, custom_callback, mode: RuleMode, help_text: str = None, *args, **kwargs):
-        # forgotten popups are dropped with their menu
-        kwargs.setdefault('timeout', util.interaction.MENU_TIMEOUT)
+        # a popup left open is dropped after a while (see POPUP_TIMEOUT)
+        kwargs.setdefault('timeout', util.interaction.POPUP_TIMEOUT)
         super().__init__(*args, **kwargs)
         self.value = None
         self.custom_callback = custom_callback
@@ -223,7 +231,7 @@ def optional_input(**kwargs) -> discord.ui.InputText:
 
 class EditModal(ReportErrors, discord.ui.Modal):
     def __init__(self, reminder: Reminder, tz_str:str, custom_callback, *args, **kwargs):
-        kwargs.setdefault('timeout', util.interaction.MENU_TIMEOUT)
+        kwargs.setdefault('timeout', util.interaction.POPUP_TIMEOUT)
         super().__init__(*args, **kwargs)
         self.value = None
         self.custom_callback = custom_callback
@@ -448,10 +456,14 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
             if view.value:
                 # store to db
-                if mode == RuleMode.RRULE_ADD:
-                    self.reminder = lib.ReminderRepeater.add_rules(self.reminder, rrule=str(rrule))
-                else:
-                    self.reminder = lib.ReminderRepeater.add_rules(self.reminder, exrule=str(rrule))
+                try:
+                    if mode == RuleMode.RRULE_ADD:
+                        self.reminder = lib.ReminderRepeater.add_rules(self.reminder, rrule=str(rrule))
+                    else:
+                        self.reminder = lib.ReminderRepeater.add_rules(self.reminder, exrule=str(rrule))
+                except lib.ReminderRepeater.ReminderChanged:
+                    await self.close(CHANGED_MEANWHILE)
+                    return
 
         # back to this menu in any case
         self.update_btn_activation() # update in case too many rules are present
@@ -548,10 +560,14 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             if view.value:
                 # rule dates live in the rule frame (local time of the server or user)
                 rule_date = lib.ReminderRepeater.utc_to_rule_frame(date, lib.ReminderRepeater.instance_id_of(self.reminder))
-                if mode == RuleMode.DATE_ADD:
-                    self.reminder = lib.ReminderRepeater.add_rules(self.reminder, rdate=rule_date)
-                else:
-                    self.reminder = lib.ReminderRepeater.add_rules(self.reminder, exdate=rule_date)
+                try:
+                    if mode == RuleMode.DATE_ADD:
+                        self.reminder = lib.ReminderRepeater.add_rules(self.reminder, rdate=rule_date)
+                    else:
+                        self.reminder = lib.ReminderRepeater.add_rules(self.reminder, exdate=rule_date)
+                except lib.ReminderRepeater.ReminderChanged:
+                    await self.close(CHANGED_MEANWHILE)
+                    return
 
         # back to this menu in any case
         self.update_btn_activation() # update in case too many rules are present
@@ -568,7 +584,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                             help_text='Write the repetition in plain words (`every friday at 7`, `every 2 weeks`, '\
                                       '`every weekday`) or paste an RRULE.\n'\
                                       f'Build an RRULE with the [RRULE Generator]({RRULE_GENERATOR_URL}).')
-        await interaction.response.send_modal(modal)
+        await util.interaction.open_popup(interaction, modal)
 
 
 
@@ -582,7 +598,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                             help_text='The reminder will **not** be sent on the dates of this rule. '\
                                       'Write it in plain words (`every saturday`) or paste an RRULE.\n'\
                                       f'Build an RRULE with the [RRULE Generator]({RRULE_GENERATOR_URL}).')
-        await interaction.response.send_modal(modal)
+        await util.interaction.open_popup(interaction, modal)
 
 
 
@@ -593,7 +609,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                             title='Add a single occurrence date',
                             custom_callback=self.date_callback,
                             mode=RuleMode.DATE_ADD)
-        await interaction.response.send_modal(modal)
+        await util.interaction.open_popup(interaction, modal)
 
 
     @discord.ui.button(label='Add Exception Date', style=discord.ButtonStyle.secondary, row=2)
@@ -603,7 +619,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                             title='Add a single exclusion date',
                             custom_callback=self.date_callback,
                             mode=RuleMode.DATE_EX_ADD)
-        await interaction.response.send_modal(modal)
+        await util.interaction.open_popup(interaction, modal)
 
 
 
@@ -714,7 +730,11 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
 
         if view.value:
             # go aheaad with deletion
-            self.reminder = lib.ReminderRepeater.rm_rules(self.reminder, rule_idx=self.rule_index)
+            try:
+                self.reminder = lib.ReminderRepeater.rm_rules(self.reminder, rule_idx=self.rule_index)
+            except lib.ReminderRepeater.ReminderChanged:
+                await self.close(CHANGED_MEANWHILE)
+                return
 
             if not self.reminder.at:
                 eb = discord.Embed(title='Orphan warning',
@@ -832,12 +852,12 @@ class ReminderEditView(util.interaction.CustomView):
                           custom_callback=self.edit_done,
                           tz_str=self.stm.tz_str,
                           title='Edit the Reminder')
-        await interaction.response.send_modal(modal)
+        await util.interaction.open_popup(interaction, modal)
 
 
     async def edit_done(self, interaction: discord.Interaction, info: str):
         """the edit popup was submitted (interaction), info: what wasn't changed"""
-        if await self.answer_expired(interaction, saved=True):
+        if await self.answer_expired(interaction, saved=True, info=info):
             return
 
         reloaded = reload_reminder(self.reminder)

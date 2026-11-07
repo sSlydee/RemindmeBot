@@ -25,7 +25,10 @@ log = logging.getLogger('Remindme.Core')
 TRANSIENT_ERRORS = (discord.DiscordServerError, aiohttp.ClientError, asyncio.TimeoutError, OSError)
 # ... but not forever
 RETRY_FOR = timedelta(days=1)
+# after this many failures in a row Discord seems unreachable: the run stops trying
+DOWN_AFTER = 3
 # the monitor is only told that all is well when both delivery loops ran this recently
+# (a run that found Discord unreachable doesn't count)
 LOOP_STALE_AFTER = timedelta(minutes=3)
 
 INTERVAL_BROKEN_WARNING = '\n**WARNING: the reminder couldn\'t get queued for future invocations** '\
@@ -38,9 +41,20 @@ async def send_long(dest, text, **kwargs):
     kwargs (embed, view...) go with the last message, allowed_mentions with all of them
     """
     parts = lib.text.split_message(text or '')
-    for part in parts[:-1]:
-        await dest.send(part, allowed_mentions=kwargs.get('allowed_mentions'))
-    return await dest.send(parts[-1] or None, **kwargs)
+    sent = None
+    for i, part in enumerate(parts):
+        try:
+            if i == len(parts) - 1:
+                sent = await dest.send(part or None, **kwargs)
+            else:
+                sent = await dest.send(part, allowed_mentions=kwargs.get('allowed_mentions'))
+        except TRANSIENT_ERRORS:
+            if i == 0:
+                raise  # nothing sent: tried again later
+            # sending it again would repeat the first parts and the mention
+            log.error(f'reminder only partly sent ({i} of {len(parts)} messages), Discord unreachable')
+            return sent
+    return sent
 
 
 class ReminderModule(commands.Cog):
@@ -357,25 +371,28 @@ class ReminderModule(commands.Cog):
                 interval.msg += INTERVAL_BROKEN_WARNING
             Connector.update_interval_at(interval)
 
-        discord_down = False
+        failures = 0  # in a row
         for interval in pending_intvls:
             if interval.paused:
                 # the schedule moved on above, nothing to send
                 log.debug(f'interval {interval._id} is paused, not delivered')
                 continue
 
-            if not discord_down:
-                discord_down = not await self.deliver(interval, due_at[interval._id], now)
+            if failures < DOWN_AFTER:
+                if await self.deliver(interval, due_at[interval._id], now):
+                    failures = 0
+                    continue
+                failures += 1
 
-            if discord_down:
-                # back to the missed date: sent on a later run
-                interval.at = due_at[interval._id]
-                Connector.update_interval_at(interval)
+            # not sent, Discord unreachable: back to the missed date, sent on a later run
+            interval.at = due_at[interval._id]
+            Connector.update_interval_at(interval)
 
         sent_in = (timeutil.utcnow()-now).total_seconds()
         if sent_in > 1:
             log.debug(f'intervals sent in {sent_in}s')
-        self.loop_done['intervals'] = timeutil.utcnow()
+        if failures < DOWN_AFTER:
+            self.loop_done['intervals'] = timeutil.utcnow()
 
 
     @tasks.loop(seconds=50)
@@ -387,10 +404,17 @@ class ReminderModule(commands.Cog):
         # a crash or restart while sending must not lose the pending ones
         pending_rems = Connector.get_elapsed_reminders(utc_timestamp(now))
 
+        failures = 0  # in a row
         for reminder in pending_rems:
-            if not await self.deliver(reminder, reminder.at, now):
-                # Discord is unreachable: keep this one and the next ones for a later run
+            if failures >= DOWN_AFTER:
+                # Discord seems unreachable: keep the next ones for a later run
                 break
+
+            if not await self.deliver(reminder, reminder.at, now):
+                # kept, tried again on a later run
+                failures += 1
+                continue
+            failures = 0
 
             # also after an error: a reminder that always fails must not be retried forever
             # (not in a finally: a shutdown while sending must keep the reminder)
@@ -400,7 +424,8 @@ class ReminderModule(commands.Cog):
         sent_in = (timeutil.utcnow()-now).total_seconds()
         if sent_in > 1:
             log.debug(f'reminders sent in {sent_in}s')
-        self.loop_done['reminders'] = timeutil.utcnow()
+        if failures < DOWN_AFTER:
+            self.loop_done['reminders'] = timeutil.utcnow()
 
         await self.push_heartbeat()
 

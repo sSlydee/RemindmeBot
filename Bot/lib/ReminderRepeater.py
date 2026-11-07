@@ -1,9 +1,12 @@
+import logging
 from datetime import datetime
 import lib.timeutil as timeutil
 from dateutil import tz
 
 from lib.Connector import Connector
 from lib.Reminder import Reminder, IntervalReminder
+
+log = logging.getLogger('Remindme.Repeater')
 
 
 #====================
@@ -84,15 +87,25 @@ def _interval_to_reminder(reminder: IntervalReminder):
 
 
 
+class ReminderChanged(Exception):
+    """the reminder was changed in another menu (e.g. it became an interval,
+       or a single reminder again), delivered or deleted since the menu loaded it
+    """
+
+
 def _stored(interval: IntervalReminder) -> IntervalReminder:
     """the stored version of an interval: another menu may have changed its rules
        since this one was loaded (pymongo blocks, nothing runs between read and write)
+
+    Raises:
+        ReminderChanged: it isn't stored anymore
     """
-    if interval._id is not None:
-        stored = Connector.get_interval_by_id(interval._id)
-        if stored is not None:
-            return stored
-    return interval
+    if interval._id is None:
+        return interval
+    stored = Connector.get_interval_by_id(interval._id)
+    if stored is None:
+        raise ReminderChanged()
+    return stored
 
 
 def _rule_at(interval: IntervalReminder, rule_idx: int):
@@ -118,9 +131,15 @@ def add_rules(reminder, rrule=None, exrule=None, rdate=None, exdate=None) -> Int
 
     Returns:
         IntervalReminder: the converted  reminder
+
+    Raises:
+        ReminderChanged: the reminder isn't stored like this anymore
     """
 
     if type(reminder) == Reminder:
+        if reminder._id is not None and Connector.get_reminder_by_id(reminder._id) is None:
+            # already an interval through another menu, delivered or deleted
+            raise ReminderChanged()
         reminder = _reminder_to_interval(reminder)
     else:
         reminder = _stored(reminder)
@@ -199,7 +218,12 @@ def reschedule_instance(instance_id, tz_str: str = None) -> int:
     for interval in Connector.get_instance_intervals(instance_id):
         if not interval.at:
             continue  # orphaned, deleted soon
-        interval.at = interval.next_trigger(utcnow, tz_str=tz_str)
+        try:
+            interval.at = interval.next_trigger(utcnow, tz_str=tz_str)
+        except Exception:
+            # a broken rule: the delivery loop warns its author and drops it
+            log.exception(f'interval {interval._id}: cannot compute its next date')
+            continue
         Connector.update_interval_at(interval)
         count += 1
     return count

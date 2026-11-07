@@ -72,7 +72,7 @@ class NewReminderView(util.interaction.CustomView):
                                                     custom_callback=self.edit_done,
                                                     tz_str=self.stm.tz_str,
                                                     title='Edit the Reminder')
-        await interaction.response.send_modal(modal)
+        await util.interaction.open_popup(interaction, modal)
 
 
     async def edit_done(self, interaction: discord.Interaction, info: str):

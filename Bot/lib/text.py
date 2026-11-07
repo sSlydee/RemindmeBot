@@ -18,10 +18,11 @@ def split_message(text: str, limit: int = MAX_CONTENT) -> list[str]:
     parts = []
     text = text or ''
     while len(text) > limit:
-        cut = text.rfind('\n', 0, limit + 1)
-        if cut <= 0:
-            cut = text.rfind(' ', 0, limit + 1)
-        if cut <= 0:
+        # in the second half only: not a first message holding just the mention
+        cut = text.rfind('\n', limit // 2, limit + 1)
+        if cut < 0:
+            cut = text.rfind(' ', limit // 2, limit + 1)
+        if cut < 0:
             cut = limit
         parts.append(text[:cut])
         text = text[cut:].lstrip('\n ') if cut < len(text) else ''

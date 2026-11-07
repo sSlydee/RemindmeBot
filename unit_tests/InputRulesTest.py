@@ -1,4 +1,5 @@
 """Input checks and mentions (no database)"""
+import time
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
@@ -41,6 +42,26 @@ class PastedRuleTest(unittest.TestCase):
         self.assertIsNone(rule)
         self.assertIn('Mars/Olympus', err)
 
+    def test_pasted_on_one_line(self):
+        # the popup is a single-line field: line breaks arrive as spaces, or are dropped
+        for text in ('DTSTART:20261110T090000Z RRULE:FREQ=WEEKLY;BYDAY=TU',
+                     'DTSTART:20261110T090000ZRRULE:FREQ=WEEKLY;BYDAY=TU',
+                     'dtstart:20261110t090000z rrule:freq=weekly;byday=tu'):
+            rule, err = p.rrule_normalize(text, NOW, TZ)
+            self.assertIsNone(err, text)
+            self.assertEqual(rule.after(datetime(2026, 11, 7)), datetime(2026, 11, 10, 10, 0), text)
+
+    def test_tzid_on_one_line(self):
+        rule, err = p.rrule_normalize('DTSTART;TZID=America/New_York:20261110T090000 RRULE:FREQ=WEEKLY', NOW, TZ)
+        self.assertIsNone(err)
+        self.assertIsNone(rule._dtstart.tzinfo)
+        self.assertEqual(rule.after(datetime(2026, 11, 7)), datetime(2026, 11, 10, 15, 0))
+
+    def test_utc_until_on_one_line(self):
+        rule, err = p.rrule_normalize('DTSTART:20261110T090000Z RRULE:FREQ=WEEKLY;UNTIL=20261124T090000Z', NOW, TZ)
+        self.assertIsNone(err)
+        self.assertEqual(list(rule), [datetime(2026, 11, 10, 10), datetime(2026, 11, 17, 10), datetime(2026, 11, 24, 10)])
+
     def test_dtstart_without_timezone_is_local(self):
         rule, err = p.rrule_normalize('DTSTART:20261110T090000\nRRULE:FREQ=WEEKLY', NOW, TZ)
         self.assertEqual(rule.after(datetime(2026, 11, 7)), datetime(2026, 11, 10, 9, 0))
@@ -60,6 +81,30 @@ class RepeatLimitTest(unittest.TestCase):
     def test_hourly_is_fine(self):
         rule, err = p.rrule_normalize('FREQ=HOURLY', NOW, TZ)
         self.assertIsNone(err)
+
+
+class ImpossibleRuleTest(unittest.TestCase):
+    """a rule without any date is refused quickly (dateutil would search until 9999)"""
+
+    def test_30th_of_february(self):
+        for text in ('FREQ=DAILY;BYMONTH=2;BYMONTHDAY=30', 'FREQ=HOURLY;BYMONTH=2;BYMONTHDAY=30'):
+            started = time.monotonic()
+            rule, err = p.rrule_normalize(text, NOW, TZ)
+            self.assertLess(time.monotonic() - started, 2, text)
+            self.assertIsNone(rule, text)
+
+    def test_sixth_monday(self):
+        rule, err = p.rrule_normalize('FREQ=MONTHLY;BYDAY=MO;BYSETPOS=6', NOW, TZ)
+        self.assertIsNone(rule)
+
+    def test_29th_of_february_is_fine(self):
+        rule, err = p.rrule_normalize('FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29', NOW, TZ)
+        self.assertEqual(rule.after(NOW), datetime(2028, 2, 29, 13, 3))
+
+    def test_until_in_the_past(self):
+        rule, err = p.rrule_normalize('FREQ=DAILY;UNTIL=20200101', NOW, TZ)
+        self.assertIsNone(rule)
+        self.assertIn('no date in the future', err)
 
 
 class HugeDateTest(unittest.TestCase):
