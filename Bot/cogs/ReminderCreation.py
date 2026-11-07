@@ -28,6 +28,68 @@ MAX_MESSAGE_LEN = 4000
 # pending reminders and repeating reminders a user can have
 MAX_REMINDERS_PER_USER = 100
 
+# suggested while the 'time' field is empty
+TIME_EXAMPLES = ['in 2h', 'tomorrow 9:00', 'friday 18:30', 'every monday at 9:00']
+
+
+def _in_words(delta: timedelta) -> str:
+    minutes = int(delta.total_seconds() // 60)
+    if minutes < 60:
+        return f'in {max(minutes, 1)} min'
+    hours = minutes // 60
+    if hours < 48:
+        return f'in {hours} h {minutes % 60:02d}' if minutes % 60 else f'in {hours} h'
+    return f'in {hours // 24} days'
+
+
+def describe_time(text: str, utcnow: datetime, tz_str: str) -> str:
+    """how /remindme reads its 'time' (shown while it is typed),
+       in the local time of the server or user
+    """
+    local_tz = tz.gettz(tz_str)
+    local_now = utcnow.replace(tzinfo=tz.UTC).astimezone(local_tz)
+
+    def local_str(local_dt):
+        fmt = '%a %d %b %H:%M' if local_dt.year == local_now.year else '%a %d %b %Y %H:%M'
+        return local_dt.strftime(fmt)
+
+    at, _ = lib.input_parser.parse(text.strip(), utcnow, tz_str)
+
+    if isinstance(at, str):
+        dtstart = timeutil.to_minute(local_now.replace(tzinfo=None))
+        rule, error = lib.input_parser.rrule_normalize(at, dtstart=dtstart, tz_str=tz_str)
+        if not rule:
+            return '⚠ ' + (error or 'invalid repetition').splitlines()[0]
+        first = rule.after(dtstart)
+        if not first:
+            return '⚠ this repetition has no date in the future'
+        first_utc = first.replace(tzinfo=local_tz).astimezone(tz.UTC).replace(tzinfo=None)
+        return f'repeats, first {local_str(first)} ({_in_words(first_utc - utcnow)})'
+
+    if not isinstance(at, datetime) or at == utcnow:
+        return '⚠ can\'t read this date'
+    if at < utcnow:
+        return '⚠ this date is in the past'
+    return f'{local_str(at.replace(tzinfo=tz.UTC).astimezone(local_tz))} ({_in_words(at - utcnow)})'
+
+
+async def time_autocomplete(ctx: discord.AutocompleteContext):
+    """the date of the 'time' being typed, as a suggestion (picking it keeps the text)"""
+    try:
+        text = (ctx.value or '').strip()
+        interaction = ctx.interaction
+        personal = lib.permissions.is_personal_context(ctx)
+        tz_str = Connector.get_timezone(interaction.user.id if personal else interaction.guild_id)
+        utcnow = timeutil.utcnow()
+        if not text:
+            return [discord.OptionChoice(name=f'{ex} → {describe_time(ex, utcnow, tz_str)}'[:100], value=ex)
+                    for ex in TIME_EXAMPLES]
+        return [discord.OptionChoice(name=f'{text[:40]} → {describe_time(text, utcnow, tz_str)}'[:100],
+                                     value=text[:100])]
+    except Exception:
+        log.exception('time preview failed')
+        return []
+
 
 class NewReminderView(util.interaction.CustomView):
     def __init__(self, reminder: Reminder, stm: util.reminderInteraction.STM, info_str: str, rrule_override, *args, **kwargs):
@@ -362,7 +424,8 @@ class ReminderCreation(commands.Cog):
     @commands.slash_command(name='remind', description='set a reminder after a certain time period')
     async def remind_user(self, ctx:discord.ApplicationContext,
                         target:discord.Option((discord.Member, discord.Role), 'the user or role you want to remind', required=True),
-                        time:discord.Option(str, 'time/date when the reminder is triggered (see syntax page on /help)', required=True),
+                        time:discord.Option(str, 'time/date when the reminder is triggered (see syntax page on /help)', required=True,
+                                            autocomplete=time_autocomplete),
                         message:discord.Option(str, 'the bot will remind you with this message', required=True,
                                                max_length=MAX_MESSAGE_LEN)):
                         #channel:discord.Option((discord.TextChannel,discord.VoiceChannel), 'Show the reminder in a channel other than the current one', required=False)=None):
@@ -378,7 +441,8 @@ class ReminderCreation(commands.Cog):
     @commands.slash_command(name='remindme', description='set a reminder after a certain time period',
                             **lib.permissions.EVERYWHERE)
     async def remindme(self, ctx:discord.ApplicationContext,
-                        time:discord.Option(str, 'time/date when the reminder is triggered (see syntax page on /help)', required=True),
+                        time:discord.Option(str, 'time/date when the reminder is triggered (see syntax page on /help)', required=True,
+                                            autocomplete=time_autocomplete),
                         message:discord.Option(str, 'the bot will remind you with this message', required=True,
                                                max_length=MAX_MESSAGE_LEN)):
                         #channel:discord.Option((discord.TextChannel,discord.VoiceChannel), 'Show the reminder in a channel other than the current one', required=False)=None):

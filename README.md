@@ -9,6 +9,7 @@ public bot of the original author: to use it, run your own instance (see
 
 * Create as many reminders as you want
 * Repeating reminders (`every friday at 20:15`) and complex patterns (iCalendar RRULE, RFC 5545)
+* See the date being typed: `/remindme time: friday 18:30` suggests `Fri 13 Nov 18:30 (in 6 days)`
 * Remind other users and roles
 * Per-server timezone (per-user in DMs), with daylight saving
 * Snooze delivered reminders (10 min, 1 hour, tomorrow 9:00 or any time), skip the
@@ -43,6 +44,7 @@ Fixed or added:
   working after a restart, for 7 days
 * skip the next date of a repeating reminder, from the delivered message or
   `/reminder_list`
+* the date read from `time` is shown while typing it (`/remindme`, `/remind`)
 * editing a reminder's date (`/remindme` syntax) and image works
 * native Discord channel picker, many interaction fixes
 * timestamps independent of the machine timezone

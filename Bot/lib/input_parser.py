@@ -609,18 +609,17 @@ def rrule_normalize(rrule_str, dtstart, tz_str='UTC'):
         return (None, 'Secondly repetitions would be classified as spam by the discord TOS.')
 
     if _impossible_month_day(rule):
-        return (None, f'The rule `{norm_str}` has no date: none of its months has that day')
+        return (None, 'This repetition has no date: none of its months has that day')
 
     try:
         dates = _first_dates(rule, dtstart)
     except TimeoutError:
-        return (None, f'The rule `{norm_str}` takes too long to check, it may have no date at all '\
-                      '(e.g. on the 30th of February)')
+        return (None, 'This repetition takes too long to check, it may have no date at all')
     except Exception as e:
         return None, str(e)
 
     if not dates:
-        return (None, f'The rule `{norm_str}` has no date in the future (checked {CHECK_YEARS} years)')
+        return (None, f'This repetition has no date in the future (checked {CHECK_YEARS} years)')
 
     # not more often than MIN_REPEAT_GAP, also with a list (FREQ=HOURLY;BYMINUTE=0,5,10,...)
     for previous, occurrence in zip(dates, dates[1:]):
