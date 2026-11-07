@@ -244,6 +244,10 @@ Run the unit tests from the repository root:
 ```
 They run on GitHub Actions on every push (Python 3.11 and 3.13).
 
+The menu tests (`unit_tests/MenuFlowTest.py`) click through the menus on a small
+stand-in for Discord (`unit_tests/fakediscord.py`) with an in-memory database.
+They need `mongomock` (`.venv/bin/pip install mongomock`) and are skipped without it.
+
 
 ## Credits
 

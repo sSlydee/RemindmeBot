@@ -117,7 +117,7 @@ class TimezoneModule(discord.Cog):
             tz_eb = self._get_tz_error_eb(value)
             view = util.interaction.MulitDropdownView([dd])
 
-            view.message = await ctx.respond(embed=tz_eb, view=view, ephemeral=ephemeral)
+            view.origin = await ctx.respond(embed=tz_eb, view=view, ephemeral=ephemeral)
             responded = True
             await view.wait()
 
@@ -137,7 +137,7 @@ class TimezoneModule(discord.Cog):
         view = util.interaction.ConfirmDenyView(dangerous_action=False)
 
         if not responded:
-            view.message = await ctx.respond(embed=tz_eb, view=view, ephemeral=ephemeral)
+            view.origin = await ctx.respond(embed=tz_eb, view=view, ephemeral=ephemeral)
         else:
             await ctx.edit(embed=tz_eb, view=view)
 

@@ -109,7 +109,7 @@ class SettingsView(util.interaction.CustomView):
 
     async def send_update_ui(self, interaction: discord.Interaction):
         self.update_ui_elements()
-        await interaction.response.edit_message(view=self)
+        await self.show(interaction, view=self)
 
     
     
@@ -216,7 +216,7 @@ class SettingsModule(commands.Cog):
 
 
         view = SettingsView(scope=scope, author=ctx.author)
-        view.message = await ctx.respond(embed=view.get_embed(), view=view, ephemeral=True)
+        view.origin = await ctx.respond(embed=view.get_embed(), view=view, ephemeral=True)
 
 
 

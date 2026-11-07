@@ -42,12 +42,11 @@ class ReminderChannelEdit(util.interaction.CustomView):
         discord.ChannelType.news_thread,
     ]
 
-    def __init__(self, reminder: Reminder, stm: STM, message, *args, **kwargs):
-        super().__init__(message, *args, **kwargs)
+    def __init__(self, reminder: Reminder, stm: STM, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.owner_id = stm.ctx.author.id
         self.reminder = reminder
         self.stm = stm
-        self.open_interaction = None
 
         # Discord's own channel picker: searchable, lists every channel and thread,
         # starts on the current channel of the reminder
@@ -109,18 +108,17 @@ class ReminderChannelEdit(util.interaction.CustomView):
 
         err_eb = await self._check_channel(new_ch)
         if err_eb:
-            view = util.interaction.AckView(dangerous_action=True)
-            await interaction.response.edit_message(embed=err_eb, view=view)
-            await view.wait()
+            if await self.open_child(interaction, util.interaction.AckView(dangerous_action=True), embed=err_eb):
+                return
             # back to the channel picker
-            await interaction.edit_original_response(embed=self.get_embed(), view=self)
+            await self.show(embed=self.get_embed(), view=self)
             return
 
         view = util.interaction.ConfirmDenyView()
         eb = discord.Embed(title='New Notification Channel',
                            description=f'Do you want to deliver this reminder to `{new_ch.name}`?')
-        await interaction.response.edit_message(embed=eb, view=view)
-        await view.wait()
+        if await self.open_child(interaction, view, embed=eb):
+            return
 
         if view.value:
             # store the channel change (same 25 char limit as on creation)
@@ -131,14 +129,12 @@ class ReminderChannelEdit(util.interaction.CustomView):
             self.stop()
         else:
             # back to the channel picker
-            await interaction.edit_original_response(embed=self.get_embed(), view=self)
+            await self.show(embed=self.get_embed(), view=self)
 
 
     @discord.ui.button(label='Cancel', style=discord.ButtonStyle.danger, row=1)
     async def cancel_btn(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        self.disable_all()
-        self.open_interaction = interaction
-        self.stop() # this will give back controll to the edit menu
+        self.stop() # back to the edit menu, which answers this click
 
 
 
@@ -149,17 +145,24 @@ class RuleMode(Enum):
     DATE_EX_ADD=3
 
 
-class RuleModal(discord.ui.DesignerModal):
+class ReportErrors:
+    """popups: log errors to the bot log and tell the user"""
+    async def on_error(self, error: Exception, interaction: discord.Interaction):
+        await util.interaction.report_error(error, interaction, type(self).__name__)
+
+
+class RuleModal(ReportErrors, discord.ui.DesignerModal):
     """popup asking for one rule or date
 
     help_text (optional) is shown above the field and may contain links
     (a 'designer' modal: a plain Modal only holds text fields)
     """
     def __init__(self, field, custom_callback, mode: RuleMode, help_text: str = None, *args, **kwargs):
+        # forgotten popups are dropped with their menu
+        kwargs.setdefault('timeout', util.interaction.MENU_TIMEOUT)
         super().__init__(*args, **kwargs)
         self.value = None
         self.custom_callback = custom_callback
-        self.message = None
         self.mode = mode
 
         if help_text:
@@ -212,12 +215,12 @@ def optional_input(**kwargs) -> discord.ui.InputText:
     return item
 
 
-class EditModal(discord.ui.Modal):
+class EditModal(ReportErrors, discord.ui.Modal):
     def __init__(self, reminder: Reminder, tz_str:str, custom_callback, *args, **kwargs):
+        kwargs.setdefault('timeout', util.interaction.MENU_TIMEOUT)
         super().__init__(*args, **kwargs)
         self.value = None
         self.custom_callback = custom_callback
-        self.message = None
         self.reminder = reminder
         self.tz = tz_str
 
@@ -329,7 +332,8 @@ class EditModal(discord.ui.Modal):
 
 
         if self.custom_callback:
-            await self.custom_callback(interaction)
+            # the menu shows the result, info is what wasn't changed
+            await self.custom_callback(interaction, info)
         else:
             await interaction.response.send_message(info or 'Reminder updated', ephemeral=True)
 
@@ -339,9 +343,18 @@ class EditModal(discord.ui.Modal):
 RRULE_GENERATOR_URL = 'https://www.textmagic.com/free-tools/rrule-generator'
 
 
+def reload_reminder(reminder):
+    """the stored version of a reminder or interval, None if it is gone
+       (delivered or deleted meanwhile)
+    """
+    if isinstance(reminder, IntervalReminder):
+        return Connector.get_interval_by_id(reminder._id)
+    return Connector.get_reminder_by_id(reminder._id)
+
+
 class ReminderIntervalAddView(util.interaction.CustomView):
-    def __init__(self, reminder: Reminder, stm: STM, message, *args, **kwargs):
-        super().__init__(message, *args, **kwargs)
+    def __init__(self, reminder: Reminder, stm: STM, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.owner_id = stm.ctx.author.id
 
         self.reminder = reminder
@@ -382,13 +395,16 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             btn.disabled=disabled
 
         self.return_btn.disabled=False # always allow return
-        
+
 
     async def rrule_callback(self, interaction: discord.Interaction, user_input: str, mode: RuleMode):
+        """a rule from the popup or the quick repeat dropdown (interaction)"""
+        if await self.answer_expired(interaction):
+            return
 
         action_str = 'Rrule' if mode==RuleMode.RRULE_ADD else 'Rrule exception'
         action_modifier = '*not*' if mode==RuleMode.RRULE_EX_ADD else ''
-     
+
         # the rule frame is the local time of the server (of the user, in DMs)
         if isinstance(self.reminder, IntervalReminder):
             dtstart = self.reminder.first_at
@@ -398,24 +414,14 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         rule_tz = Connector.get_timezone(lib.ReminderRepeater.instance_id_of(self.reminder))
         rrule, error = self._parse_rule(user_input, dtstart, rule_tz)
 
-        # transfer 
-        msg = None
-
         if not rrule:
-            if error:
-                error_str = error
-            else: 
-                error_str = 'Unknown error occurred while parsing the rrule.'
-
+            error_str = error or 'Unknown error occurred while parsing the rrule.'
             embed = discord.Embed(title='Invalid rrule',
                                   color=0xff0000,
                                   description=error_str+'\nPlease try again. '\
                                               f'You can build an RRULE with an [RRULE Generator]({RRULE_GENERATOR_URL}).')
-            view = util.interaction.AckView()
-            msg = await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-            await self.transfer_to_message(msg, override_old=True) # after sending the new message, as msg is required
-
-            await view.wait()
+            if await self.open_child(interaction, util.interaction.AckView(), embed=embed):
+                return
 
         else:
             # success
@@ -427,11 +433,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                 name = 'Skipped dates' if mode == RuleMode.RRULE_EX_ADD else 'Next dates of this rule'
                 eb.add_field(name=name, value=preview, inline=False)
             view = util.interaction.ConfirmDenyView(dangerous_action=False)
-            
-            msg = await interaction.response.send_message(embed=eb, view=view, ephemeral=True)
-            await interaction.edit(embed=eb, view=view)
-
-            await view.wait()
+            if await self.open_child(interaction, view, embed=eb):
+                return
 
             if view.value:
                 # store to db
@@ -440,12 +443,9 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                 else:
                     self.reminder = lib.ReminderRepeater.add_rules(self.reminder, exrule=str(rrule))
 
-          
-        # return to normal view in any case
-        eb = self.get_embed()
+        # back to this menu in any case
         self.update_btn_activation() # update in case too many rules are present
-        msg = await msg.edit_original_response(embed=eb, view=self)
-        
+        await self.show(embed=self.get_embed(), view=self)
 
 
     @staticmethod
@@ -492,31 +492,36 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         await self.rrule_callback(interaction, rule, RuleMode.RRULE_ADD)
 
 
+    @staticmethod
+    def _date_error(date, info: str, user_input: str, utcnow: datetime) -> str:
+        """why a parsed single date can't be used, None if it can"""
+        if isinstance(date, str):
+            return 'This is a repetition, not a single date: use `Add Repeating Rule` for it.'
+        if not isinstance(date, datetime) or date == utcnow:
+            # the parser returns 'now' when it can't read the input
+            return info or f'Couldn\'t read a date from `{(user_input or "")[:100]}`.'
+        if date <= utcnow:
+            return 'Only dates in the future are allowed.'
+        return None
+
+
     async def date_callback(self, interaction: discord.Interaction, user_input: str, mode: RuleMode):
+        """a single date from the popup (interaction)"""
+        if await self.answer_expired(interaction):
+            return
 
         action_str = 'single date' if mode==RuleMode.DATE_ADD else 'date exception'
 
         utcnow = timeutil.utcnow()
         date, info = lib.input_parser.parse(user_input, utcnow, self.stm.tz_str)
-        interval = date-utcnow if date else utcnow # set to error if not defined
+        error_str = self._date_error(date, info, user_input, utcnow)
 
-        # transfer 
-        msg = None
-
-        if interval <= timedelta(hours=0):
-            if interval == timedelta(hours=0):
-                error_str = info
-            else:
-                error_str = 'Only dates in the future are allowed.'
-
+        if error_str:
             embed = discord.Embed(title='Invalid input date',
                                   color=0xff0000,
                                   description=error_str+'\nPlease try again.')
-            view = util.interaction.AckView()
-            msg = await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-            await self.transfer_to_message(msg, override_old=True) # after sending the new message, as msg is required
-
-            await view.wait()
+            if await self.open_child(interaction, util.interaction.AckView(), embed=embed):
+                return
 
         else:
             # success
@@ -526,11 +531,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                            description='Do you want to add the date `{:s}`? as a new {:s}.'\
                                         .format(localized_date.strftime('%Y-%m-%d %H:%M %Z'), action_str))
             view = util.interaction.ConfirmDenyView(dangerous_action=False)
-
-            msg = await interaction.response.send_message(embed=eb, view=view, ephemeral=True)
-            await self.transfer_to_message(msg, override_old=True) # after sending the new message, as msg is required
-
-            await view.wait()
+            if await self.open_child(interaction, view, embed=eb):
+                return
 
             if view.value:
                 # rule dates live in the rule frame (local time of the server or user)
@@ -540,11 +542,9 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                 else:
                     self.reminder = lib.ReminderRepeater.add_rules(self.reminder, exdate=rule_date)
 
-
-        # return to normal view in any case
-        eb = self.get_embed()
+        # back to this menu in any case
         self.update_btn_activation() # update in case too many rules are present
-        msg = await self.message.edit_original_message(embed=eb, view=self)
+        await self.show(embed=self.get_embed(), view=self)
 
 
     @discord.ui.button(label='Add Repeating Rule', style=discord.ButtonStyle.secondary, row=1)
@@ -557,14 +557,13 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                             help_text='Write the repetition in plain words (`every friday at 7`, `every 2 weeks`, '\
                                       '`every weekday`) or paste an RRULE.\n'\
                                       f'Build an RRULE with the [RRULE Generator]({RRULE_GENERATOR_URL}).')
-
         await interaction.response.send_modal(modal)
 
 
 
     @discord.ui.button(label='Add Exception Rule', style=discord.ButtonStyle.secondary, row=1)
     async def add_rrule_ex(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        
+
         modal = RuleModal(field='Skip, e.g. "every saturday" or an RRULE',
                             title='Add Exception Rule',
                             custom_callback=self.rrule_callback,
@@ -578,7 +577,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
     @discord.ui.button(label='Add Single Date', style=discord.ButtonStyle.secondary, row=2)
     async def add_single(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        
+
         modal = RuleModal(field='Enter a new date (fuzzy or iso)',
                             title='Add a single occurrence date',
                             custom_callback=self.date_callback,
@@ -588,26 +587,23 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
     @discord.ui.button(label='Add Exception Date', style=discord.ButtonStyle.secondary, row=2)
     async def add_single_ex(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        
+
         modal = RuleModal(field='Enter an exclusion date (fuzzy or iso)',
                             title='Add a single exclusion date',
                             custom_callback=self.date_callback,
                             mode=RuleMode.DATE_EX_ADD)
         await interaction.response.send_modal(modal)
 
-  
+
 
     @discord.ui.button(label='Return', style=discord.ButtonStyle.secondary, row=3)
     async def return_btn(self, button:  discord.ui.Button, interaction: discord.Interaction):
-
-        self.disable_all()
-        await interaction.response.edit_message(view=self) # in case menu timeous out
-        self.stop() # this will give back controll to the list menu
+        self.stop() # back to the previous menu, which answers this click
 
 
 class ReminderIntervalModifyView(util.interaction.CustomView):
-    def __init__(self, reminder: IntervalReminder, stm, message, *args, **kwargs):
-        super().__init__(message, *args, **kwargs)
+    def __init__(self, reminder: IntervalReminder, stm, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.owner_id = stm.ctx.author.id
 
         self.reminder: IntervalReminder = reminder
@@ -625,7 +621,7 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
     def get_embed(self, rule_id:int=None) -> discord.Embed:
 
         rules = self.reminder.get_rule_dicts()
-    
+
         if self.rule_index is None:
             descr = 'You can show more detailed information for existing rules.'\
                             'You can aswell delete selected rules/dates'
@@ -644,8 +640,8 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
         dd_search = [x for x in self.children if isinstance(x, discord.ui.Select)]
 
         rule_options = [discord.SelectOption(
-                        label=r['label'], 
-                        description=r['descr'], 
+                        label=r['label'],
+                        description=r['descr'],
                         value=str(i),
                         default=(i==self.rule_index)) for i, r in enumerate(rules)]
 
@@ -656,7 +652,7 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
                 dd.append_option(opt)
         elif dd_search and not rule_options:
             # delete action row
-            self.children.remove(dd_search[0])
+            self.remove_item(dd_search[0])
         elif rule_options:
             self.drop_down = discord.ui.Select(
                 placeholder='Select a rule/date for more info',
@@ -667,26 +663,26 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
             )
             self.drop_down.callback = self.drop_callback
             self.add_item(self.drop_down)
-        
+
         # else pass
+
+
+    def _reset_selection(self):
+        self.rule_index=None
+        self.del_rule.disabled=True
+        self.update_dropdown()
 
 
     @discord.ui.button(label='Add New Rule', style=discord.ButtonStyle.primary, row=2)
     async def add_rule(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        view = ReminderIntervalAddView(self.reminder, self.stm, self.message)
-        eb = view.get_embed()
+        view = ReminderIntervalAddView(self.reminder, self.stm)
+        if await self.open_child(interaction, view, embed=view.get_embed()):
+            return
+        self.reminder = view.reminder
 
-        await interaction.response.edit_message(embed=eb, view=view)
-        await view.wait()
-
-        self.message = view.message # in case of migration
-
-        # go back to current menu
-        self.rule_index=None
-        self.del_rule.disabled=True
-        eb = self.get_embed()
-        self.update_dropdown()
-        await self.message.edit_original_message(embed=eb, view=self)
+        # back to this menu
+        self._reset_selection()
+        await self.show(embed=self.get_embed(), view=self)
 
 
 
@@ -695,16 +691,15 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
 
         rules = self.reminder.get_rule_dicts()
         rule_descr = rules[self.rule_index]['descr']
-        
+
         view = util.interaction.ConfirmDenyView(dangerous_action=True)
         embed = discord.Embed(
             title='Danger',
             description=f'Are you sure to delete the rule `{rule_descr}`?',
             color=0xff0000
         )
-
-        await interaction.response.edit_message(embed=embed, view=view)
-        await view.wait()
+        if await self.open_child(interaction, view, embed=embed):
+            return
 
         if view.value:
             # go aheaad with deletion
@@ -714,33 +709,22 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
                 eb = discord.Embed(title='Orphan warning',
                     color=0xaa3333,
                     description='The reminder has no further events pending. It will be deleted soon, if no new rule is added')
-                view = util.interaction.AckView(dangerous_action=True)
+                if await self.open_child(None, util.interaction.AckView(dangerous_action=True), embed=eb):
+                    return
 
-                await self.message.edit_original_message(embed=eb, view=view)
-                await view.wait()
-        
-
-        # test if there're any rules left
         if isinstance(self.reminder, IntervalReminder):
-            # return back to normal view in any case
-            self.rule_index=None
-            self.del_rule.disabled=True
-            eb = self.get_embed()
-            self.update_dropdown()
-            await self.message.edit_original_message(embed=eb, view=self)
+            # back to this menu
+            self._reset_selection()
+            await self.show(embed=self.get_embed(), view=self)
         else:
-            self.disable_all()
-            await interaction.edit_original_message(view=self) # in case menu timeous out
-            self.stop() # this will give back controll to the list menu
-    
+            # no rule left: a single reminder again, back to the edit menu
+            self.stop()
+
 
 
     @discord.ui.button(label='Return', style=discord.ButtonStyle.secondary, row=3)
     async def return_btn(self, button:  discord.ui.Button, interaction: discord.Interaction):
-
-        self.disable_all()
-        await interaction.response.edit_message(view=self) # in case menu timeous out
-        self.stop() # this will give back controll to the list menu
+        self.stop() # back to the edit menu, which answers this click
 
 
 
@@ -752,14 +736,14 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
         self.del_rule.disabled=False
         eb = self.get_embed()
         self.update_dropdown()
-        await interaction.response.edit_message(embed=eb, view=self)
+        await self.show(interaction, embed=eb, view=self)
 
 
 
 
 class ReminderEditView(util.interaction.CustomView):
-    def __init__(self, reminder: Reminder, stm, message=None, *args, **kwargs):
-        super().__init__(message, *args, **kwargs)
+    def __init__(self, reminder: Reminder, stm, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.owner_id = stm.ctx.author.id
 
         self.reminder = reminder
@@ -803,23 +787,13 @@ class ReminderEditView(util.interaction.CustomView):
 
     @discord.ui.button(label='Edit Channel', style=discord.ButtonStyle.primary)
     async def edit_channel(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        
-        view = ReminderChannelEdit(self.reminder, self.stm, message=self.message)
-        eb = view.get_embed()
 
-        await interaction.response.edit_message(embed=eb, view=view)
-        timed_out = await view.wait()
-        if timed_out:
+        view = ReminderChannelEdit(self.reminder, self.stm)
+        if await self.open_child(interaction, view, embed=view.get_embed()):
             return
 
-        # go back to normal view
-        eb = self.get_embed()
-        if view.open_interaction:
-            # 'Cancel' pressed: answer that click
-            await view.open_interaction.response.edit_message(embed=eb, view=self)
-        else:
-            # channel changed: the confirmation click was already answered
-            await interaction.edit_original_response(embed=eb, view=self)
+        # back to this menu
+        await self.show(embed=self.get_embed(), view=self)
 
 
 
@@ -827,43 +801,44 @@ class ReminderEditView(util.interaction.CustomView):
     async def set_interval(self, button:  discord.ui.Button, interaction: discord.Interaction):
 
         if isinstance(self.reminder, IntervalReminder):
-            view = ReminderIntervalModifyView(self.reminder, self.stm, message=self.message)
+            view = ReminderIntervalModifyView(self.reminder, self.stm)
         else:
-            view = ReminderIntervalAddView(self.reminder, self.stm, message=self.message)
-    
+            view = ReminderIntervalAddView(self.reminder, self.stm)
 
-        eb = view.get_embed()
-        await interaction.response.edit_message(embed=eb, view=view)
-
-
-        # wait for end of interaction
-        await view.wait()
-        self.message = view.message # update own message, in case it was transferred
+        if await self.open_child(interaction, view, embed=view.get_embed()):
+            return
+        # a reminder with rules becomes an interval (and back), with a new id
         self.reminder = view.reminder
 
-        # go back to reminder edit view
+        # back to this menu
         self._override_edit_label()
-        eb = self.get_embed()
-        await interaction.edit_original_response(embed=eb, view=self)
+        await self.show(embed=self.get_embed(), view=self)
 
 
     @discord.ui.button(label='Edit', emoji='🛠️', style=discord.ButtonStyle.secondary)
     async def edit_reminder_btn(self, button: discord.ui.Button, interaction: discord.Interaction):
-        modal = EditModal(reminder=self.reminder, 
-                                                    custom_callback=None,
-                                                    tz_str=self.stm.tz_str,
-                                                    title='Edit the Reminder')
-
+        modal = EditModal(reminder=self.reminder,
+                          custom_callback=self.edit_done,
+                          tz_str=self.stm.tz_str,
+                          title='Edit the Reminder')
         await interaction.response.send_modal(modal)
-        await modal.wait()
 
-        if isinstance(self.reminder, IntervalReminder):
-            self.reminder = Connector.get_interval_by_id(self.reminder._id)
-        else:
-            self.reminder = Connector.get_reminder_by_id(self.reminder._id)
 
-        eb = self.get_embed()
-        await interaction.edit_original_response(embed=eb, view=self)
+    async def edit_done(self, interaction: discord.Interaction, info: str):
+        """the edit popup was submitted (interaction), info: what wasn't changed"""
+        if await self.answer_expired(interaction, saved=True):
+            return
+
+        reloaded = reload_reminder(self.reminder)
+        if reloaded is None:
+            await interaction.response.send_message('This reminder was delivered or deleted while you edited it.', ephemeral=True)
+            self.stop() # back to the list
+            return
+
+        self.reminder = reloaded
+        await self.show(interaction, embed=self.get_embed(), view=self)
+        if info:
+            await interaction.followup.send(info, ephemeral=True)
 
 
     @discord.ui.button(label='Pause', emoji='⏸️', style=discord.ButtonStyle.secondary, row=1)
@@ -877,37 +852,29 @@ class ReminderEditView(util.interaction.CustomView):
         Connector.set_interval_paused(self.reminder._id, self.reminder.paused)
 
         self._override_edit_label()
-        await interaction.response.edit_message(embed=self.get_embed(), view=self)
+        await self.show(interaction, embed=self.get_embed(), view=self)
 
 
     @discord.ui.button(label='Return', style=discord.ButtonStyle.secondary, row=2)
     async def ret_menu(self, button:  discord.ui.Button, interaction: discord.Interaction):
-
-        self.disable_all()
-        self.open_interaction = interaction
-        self.stop() # this will give back controll to the list menu
+        self.stop() # back to the list, which answers this click
 
 
     @discord.ui.button(label='Delete', style=discord.ButtonStyle.danger, row=2)
     async def delete_reminder(self, button:  discord.ui.Button, interaction: discord.Interaction):
-        
+
         view = util.interaction.ConfirmDenyView(dangerous_action=True)
         eb = self.get_embed()
         eb.title = 'Delete Reminder?'
-        await interaction.response.edit_message(embed=eb, view=view)
-        await view.wait()
+        if await self.open_child(interaction, view, embed=eb):
+            return
 
         if view.value:
-            # delete the reminder
             if isinstance(self.reminder, IntervalReminder):
                 Connector.delete_interval(self.reminder._id)
             else:
                 Connector.delete_reminder(self.reminder._id)
+            self.stop() # back to the list, without this reminder
+            return
 
-            # go back to previous view
-            self.disable_all()
-            
-
-        await interaction.edit_original_response(embed=self.get_embed(), view=self)
-        if view.value:
-            self.stop() # must be after last edit
+        await self.show(embed=self.get_embed(), view=self)

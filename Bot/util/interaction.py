@@ -1,6 +1,5 @@
 from datetime import timedelta
 import lib.timeutil as timeutil
-from typing import Union
 
 import discord
 
@@ -11,13 +10,65 @@ import logging
 log = logging.getLogger('Remindme')
 
 
+# menus stay usable this long after their last use: a bit less than the 15 minutes
+# an interaction token lives, so the timeout can still disable the buttons
+MENU_TIMEOUT = 14*60
+
+
+async def edit_menu(target, **kwargs):
+    """edit the message of a menu
+
+    target is an interaction on the menu message (a click, or a popup opened
+    from it), or the first response of the menu (the Interaction returned by
+    ctx.respond, a WebhookMessage, a Message)
+
+    py-cord replaces view.message by the plain Message of every click, and a
+    plain Message can't be edited when it is ephemeral: menus are edited
+    through their interactions instead
+    """
+    response = getattr(target, 'response', None)
+    if response is None:
+        return await target.edit(**kwargs)
+    if response.is_done():
+        return await target.edit_original_response(**kwargs)
+    return await response.edit_message(**kwargs)
+
+
+async def report_error(error: Exception, interaction: discord.Interaction, where: str):
+    """log an error of a button or popup (with its traceback) and tell the user"""
+    log.error(f'error in {where}', exc_info=error)
+    text = 'Something went wrong, sorry. The error was logged.'
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(text, ephemeral=True)
+        else:
+            await interaction.response.send_message(text, ephemeral=True)
+    except Exception:
+        log.debug('could not tell the user about the error', exc_info=True)
+
+
 class CustomView(discord.ui.View):
-    def __init__(self, message=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
+    """base of all menus and buttons
+
+    The message is edited with show(), through the latest interaction on it.
+    A sub-menu is shown on the same message with open_child(), which returns
+    once the sub-menu stops.
+    """
+    def __init__(self, *args, timeout=discord.utils.MISSING, **kwargs):
+        if timeout is discord.utils.MISSING:
+            timeout = MENU_TIMEOUT
+        super().__init__(*args, timeout=timeout, **kwargs)
+
         self.value = None
-        self.message: Union[discord.Message, discord.Interaction, discord.WebhookMessage] = message
-        self.open_interaction = None
+        # first response of the menu (ctx.respond, channel.send),
+        # for a timeout before anyone used it
+        self.origin = None
+        # latest click on this view, possibly not answered yet
+        self.last_interaction: discord.Interaction = None
+        # latest interaction that edited the message
+        self._handle: discord.Interaction = None
+        # True once this menu, or one of its sub-menus, timed out
+        self.expired = False
         # when set, only this user can use the components
         # (needed for views attached to public messages)
         self.owner_id = None
@@ -26,14 +77,16 @@ class CustomView(discord.ui.View):
         if self.owner_id is not None and interaction.user.id != self.owner_id:
             await interaction.response.send_message('Only the author of this reminder can use these buttons', ephemeral=True)
             return False
+        self.last_interaction = interaction
         return True
+
+    async def on_error(self, error: Exception, item, interaction: discord.Interaction):
+        name = getattr(item, 'label', None) or getattr(item, 'placeholder', None) or type(item).__name__
+        await report_error(error, interaction, f'{type(self).__name__} ({name})')
 
     def disable_all(self):
         """disable all components in this view
-           and stop the view
         """
-
-        # self.disable_all_items()
         for child in self.children:
            # make all button childs gray
            if isinstance(child, discord.ui.Button):
@@ -41,52 +94,95 @@ class CustomView(discord.ui.View):
            child.disabled = True
 
 
+    def _edit_target(self):
+        """what to edit the message with: the latest click while it is
+           unanswered, else the latest interaction that edited the message
+        """
+        click = self.last_interaction
+        if click is not None and not click.response.is_done():
+            return click
+        return self._handle or self.origin or click
+
+
+    async def show(self, interaction: discord.Interaction = None, **kwargs):
+        """edit the menu message (embed=..., view=...)
+
+        through interaction when given (a click on this menu, or a popup opened
+        from it), else through the latest interaction known
+        """
+        target = interaction or self._edit_target()
+        if target is None:
+            log.warning(f'{type(self).__name__}: no message to edit')
+            return
+        await edit_menu(target, **kwargs)
+        if getattr(target, 'response', None) is not None:
+            self._handle = target
+
+
+    async def open_child(self, interaction: discord.Interaction, child: 'CustomView', **kwargs) -> bool:
+        """show the sub-menu child on this message and wait until it stops
+
+        This menu doesn't time out meanwhile. Afterwards it continues through
+        the latest clicks on the sub-menu: call show() to come back.
+
+        Returns:
+            bool: True if the sub-menu timed out. The whole menu is over then,
+                  this one stops as well
+        """
+        if child.owner_id is None:
+            child.owner_id = self.owner_id
+
+        own_timeout, self.timeout = self.timeout, None  # py-cord's timer ends on None
+        try:
+            await child.show(interaction or self._edit_target(), view=child, **kwargs)
+            timed_out = await child.wait() or child.expired
+        finally:
+            # restarted when this menu is shown again
+            self.timeout = own_timeout
+
+        self.last_interaction = child.last_interaction or self.last_interaction
+        self._handle = child._handle or self._handle
+        if timed_out:
+            self.expired = True
+            self.stop()
+        return timed_out
+
+
     async def on_timeout(self):
+        self.expired = True
         self.disable_all()
 
-        if self.message:
+        # self.message is set by py-cord: fine for public messages only
+        for target in (self._handle, self.origin, self.message):
+            if target is None:
+                continue
             try:
-                if hasattr(self.message, 'edit_original_message'):
-                        await self.message.edit_original_message(view=self)
-                elif hasattr(self.message, 'edit'):
-                        await self.message.edit(view=self)
-                else:
-                    log.debug('on_timeout: message has no attr "edit_original_message. Do not disable btn elements"')
-            except:
-                log.warning('failed to edit message on timeout')
+                await edit_menu(target, view=self)
+                return
+            except Exception:
+                continue
+        log.debug(f'{type(self).__name__} timed out, could not disable its buttons')
 
 
-    async def transfer_to_message(self, new_msg, override_old):
-        """attach this view context to a new message
-           all components of the old message will be deleted by edit
+    async def answer_expired(self, interaction: discord.Interaction, saved=False) -> bool:
+        """tell the user this menu is over (for popups submitted after the timeout)
 
-           the content can optionally be replaced with "See below"
-
-        Args:
-            new_msg (_type_): _description_
-            override_old (_type_): _description_
+        Returns:
+            bool: True if the menu is over
         """
-        
-        if isinstance(self.message, discord.WebhookMessage):
-            func = self.message.edit
-        else:
-            func = self.message.edit_original_message
-
-        if self.message:
-            if override_old:
-                await func(content='Please see the Message below', embed=None, view=None)
-            else:
-                await func(view=None)
-                
-
-        self.message = new_msg
+        if not self.is_finished():
+            return False
+        text = 'Saved. ' if saved else ''
+        text += 'This menu has expired, open it again with `/reminder_list`.'
+        await interaction.response.send_message(text, ephemeral=True)
+        return True
 
 
 
 
 class AckView(CustomView):
-    def __init__(self, dangerous_action=False, message=None, *args, **kwargs):
-        super().__init__(message=message, *args, **kwargs)
+    def __init__(self, dangerous_action=False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.danger = dangerous_action
         if dangerous_action:
             self.ack.style = discord.ButtonStyle.danger
@@ -100,11 +196,10 @@ class AckView(CustomView):
         button.style = discord.ButtonStyle.red if self.danger else discord.ButtonStyle.green
         self.children = [button]
 
-        await interaction.response.edit_message(view=self)
+        await self.show(interaction, view=self)
 
         self.value = True
         self.stop()
-        self.open_interaction = interaction
 
 
 
@@ -121,7 +216,7 @@ class ConfirmDenyView(AckView):
         button.label='Aborted'
         button.style = discord.ButtonStyle.danger
 
-        await interaction.response.edit_message(view=self)
+        await self.show(interaction, view=self)
 
         self.value = False
         self.stop()
@@ -138,7 +233,7 @@ class MulitDropdownView(CustomView):
             drop.callback = self.callback
             self.add_item(drop)
 
-    
+
     async def callback(self, interaction: discord.Interaction):
 
         values = interaction.data.get('values') or []
@@ -149,13 +244,13 @@ class MulitDropdownView(CustomView):
         self.value = values[0]
 
         # find selected item and make it default
-        # this is a workaround as disabling the item 
+        # this is a workaround as disabling the item
         # resets the user selection
         self.disable_all()
         child = [x for x in self.children if x.custom_id == interaction.data['custom_id']][0]
         opt = [x for x in child.options if x.value==self.value][0]
-        
-        await interaction.response.edit_message(view=self)
+
+        await self.show(interaction, view=self)
         # go ahead and disable the view
         opt.default = True
         self.stop()
@@ -176,7 +271,7 @@ class UndeliveredView(CustomView):
             Connector.delete_interval(self.r_id)
 
         self.disable_all()
-        await interaction.response.edit_message(view=self)
+        await self.show(interaction, view=self)
 
         self.value = False
         self.stop()
@@ -190,7 +285,7 @@ class SnoozeView(CustomView):
 
 
     async def snooze_reminder(self, button: discord.ui.Button, interaction: discord.Interaction, delay_seconds: int):
-        
+
         # convert to json and back to reminder object
         # this automatically converts intervals to reminders
         snoozed = Reminder(self.reminder._to_json())
@@ -224,7 +319,7 @@ class SnoozeView(CustomView):
 
             self.disable_all()
             button.style = discord.ButtonStyle.green
-            await interaction.response.edit_message(view=self)
+            await self.show(interaction, view=self)
             self.stop()
 
 
@@ -236,7 +331,7 @@ class SnoozeView(CustomView):
     async def snooze_60(self, button: discord.ui.Button, interaction: discord.Interaction):
         await self.snooze_reminder(button, interaction, 60*60)
 
-    
+
 
 class SnoozeIntervalView(SnoozeView):
     def __init__(self, *args, **kwargs):
@@ -252,7 +347,7 @@ class SnoozeIntervalView(SnoozeView):
         self.disable_all()
         button.style = discord.ButtonStyle.danger
 
-        await interaction.response.edit_message(view=self, embed=discord.Embed(title='Deleted Reminder', description='The reminder was deleted by its author', color=0x409fe2)) # cyan blue
+        await self.show(interaction, view=self, embed=discord.Embed(title='Deleted Reminder', description='The reminder was deleted by its author', color=0x409fe2)) # cyan blue
         self.stop()
 
 

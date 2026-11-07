@@ -41,21 +41,16 @@ class NewReminderView(util.interaction.CustomView):
 
     @discord.ui.button(label='Set Interval', emoji='🔁', style=discord.ButtonStyle.primary)
     async def edit_interval(self, button: discord.ui.Button, interaction: discord.Interaction):
-        
-        view = util.reminderInteraction.ReminderIntervalAddView(self.reminder, self.stm, self.message)
-        await interaction.response.edit_message(embed=view.get_embed(), view=view)
-        await view.wait()
 
-        self.message = view.message # could've migrated
+        view = util.reminderInteraction.ReminderIntervalAddView(self.reminder, self.stm)
+        if await self.open_child(interaction, view, embed=view.get_embed()):
+            return
         self.reminder = view.reminder # could be an interval with different id now
+        if isinstance(self.reminder, IntervalReminder):
+            self.edit_interval.label = 'Edit Interval'
 
-        # re-send this button menu
-        if isinstance(self.message, discord.WebhookMessage):
-            func = self.message.edit
-        else:
-            func = self.message.edit_original_message
-
-        await func(embed=self.get_embed(), view=self)
+        # back to this menu
+        await self.show(embed=self.get_embed(), view=self)
 
 
     @discord.ui.button(label='Edit', emoji='🛠️', style=discord.ButtonStyle.secondary)
@@ -64,29 +59,28 @@ class NewReminderView(util.interaction.CustomView):
             eb = discord.Embed(title='Cannot edit reminders of other users', color=Consts.col_crit)
             self.disable_all()
             self.del_reminder.style = discord.ButtonStyle.danger # keep this btn red
-            await interaction.response.edit_message(embed=eb, view=self)
+            await self.show(interaction, embed=eb, view=self)
             return
 
-        modal = util.reminderInteraction.EditModal(reminder=self.reminder, 
-                                                    custom_callback=None,
+        modal = util.reminderInteraction.EditModal(reminder=self.reminder,
+                                                    custom_callback=self.edit_done,
                                                     tz_str=self.stm.tz_str,
                                                     title='Edit the Reminder')
         await interaction.response.send_modal(modal)
-        await modal.wait()
 
-        # update reminder (or interval)
-        if isinstance(self.reminder, IntervalReminder):
-            self.reminder = Connector.get_interval_by_id(self.reminder._id)
-        else:
-            self.reminder = Connector.get_reminder_by_id(self.reminder._id)
 
-        # re-send this button menu
-        if isinstance(self.message, discord.WebhookMessage):
-            func = self.message.edit
-        else:
-            func = self.message.edit_original_message
+    async def edit_done(self, interaction: discord.Interaction, info: str):
+        """the edit popup was submitted (interaction), info: what wasn't changed"""
+        reloaded = util.reminderInteraction.reload_reminder(self.reminder)
+        if reloaded is None or self.is_finished():
+            text = 'Saved.' if reloaded else 'This reminder was delivered or deleted while you edited it.'
+            await interaction.response.send_message(f'{text} {info}'.strip(), ephemeral=True)
+            return
 
-        await func(embed=self.get_embed(), view=self)
+        self.reminder = reloaded
+        await self.show(interaction, embed=self.get_embed(), view=self)
+        if info:
+            await interaction.followup.send(info, ephemeral=True)
 
 
 
@@ -111,7 +105,7 @@ class NewReminderView(util.interaction.CustomView):
         eb = discord.Embed(title=eb_title, color=color)
         self.disable_all()
         self.del_reminder.style = discord.ButtonStyle.danger # keep this btn red
-        await interaction.response.edit_message(embed=eb, view=self)
+        await self.show(interaction, embed=eb, view=self)
         self.stop()
 
 
@@ -335,9 +329,8 @@ class ReminderCreation(commands.Cog):
         view = NewReminderView(rem, stm=stm, info_str=info, rrule_override=rrule, timeout=delete_after)
         tiny_embed = view.get_embed() 
 
-        msg = await ctx.respond(embed=tiny_embed, delete_after=delete_after, view=view, 
+        view.origin = await ctx.respond(embed=tiny_embed, delete_after=delete_after, view=view,
                             allowed_mentions=discord.AllowedMentions.none(), ephemeral=hidden)
-        view.message = msg
 
 
     # =====================

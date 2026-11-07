@@ -159,7 +159,7 @@ class ReminderModule(commands.Cog):
 
                     if view:
                         # for timeout functionality
-                        view.message = tmp_msg
+                        view.origin = tmp_msg
                                     
                     return True
                 except discord.errors.Forbidden:

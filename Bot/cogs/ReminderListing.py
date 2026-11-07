@@ -26,6 +26,7 @@ class ReminderListView(util.interaction.CustomView):
         super().__init__(*args, **kwargs)
 
         self.stm:util.reminderInteraction.STM = stm
+        self.owner_id = stm.ctx.author.id
         self.update_dropdown()
 
     def get_embed(self) -> discord.Embed:
@@ -95,7 +96,7 @@ class ReminderListView(util.interaction.CustomView):
         self.stm.page = (self.stm.page - 1) % self.page_count()
 
         self.update_dropdown(refresh=False)
-        await interaction.response.edit_message(embed=self.get_embed(), view=self)
+        await self.show(interaction, embed=self.get_embed(), view=self)
 
 
 
@@ -105,7 +106,7 @@ class ReminderListView(util.interaction.CustomView):
         self.stm.page = (self.stm.page + 1) % self.page_count()
 
         self.update_dropdown(refresh=False)
-        await interaction.response.edit_message(embed=self.get_embed(), view=self)
+        await self.show(interaction, embed=self.get_embed(), view=self)
 
 
 
@@ -121,36 +122,21 @@ class ReminderListView(util.interaction.CustomView):
             # nothing selected, or the list is not long enough anymore
             # update ui to show the current list
             self.update_dropdown()
-            await interaction.response.edit_message(embed=self.get_embed(), view=self)
+            await self.show(interaction, embed=self.get_embed(), view=self)
             return
         sel = values[0]
 
 
         # go ahead with reminder edit
         sel_rem = page_rems[int(sel)]
-        view = util.reminderInteraction.ReminderEditView(sel_rem, self.stm, message=self.message)
-        rem_embed = view.get_embed()
-        await interaction.response.edit_message(embed=rem_embed, view=view)
-
-        timed_out = await view.wait()
-        self.message = view.message # update in case it was transferred
-        if timed_out:
+        view = util.reminderInteraction.ReminderEditView(sel_rem, self.stm)
+        if await self.open_child(interaction, view, embed=view.get_embed()):
             # the edit view disabled itself, the menu is over
             return
 
-        # update reminder list and dropdown
+        # back to the list, reloaded (the reminder may be deleted or changed)
         self.update_dropdown()
-        new_eb = self.get_embed()
-        if view.open_interaction:
-            # 'Return' pressed: answer that click
-            await view.open_interaction.response.edit_message(embed=new_eb, view=self)
-        else:
-            # reminder deleted: its last click was already answered
-            if isinstance(self.message, discord.WebhookMessage):
-                await self.message.edit(embed=new_eb, view=self)
-            else:
-                await self.message.edit_original_response(embed=new_eb, view=self)
-        # self is not used anymore, until this is finished
+        await self.show(embed=self.get_embed(), view=self)
 
 
 
@@ -277,7 +263,7 @@ class ReminderListing(commands.Cog):
         # manually send initial message to init view
         view = ReminderListView(stm)
         eb = view.get_embed()    
-        view.message = await stm.ctx.respond(embed=eb, view=view, ephemeral=True)
+        view.origin = await stm.ctx.respond(embed=eb, view=view, ephemeral=True)
 
 
     # =====================
