@@ -227,3 +227,20 @@ def reschedule_instance(instance_id, tz_str: str = None) -> int:
         Connector.update_interval_at(interval)
         count += 1
     return count
+
+
+def skip_next(interval: IntervalReminder):
+    """don't send the next occurrence of an interval (adds an exception date)
+
+    Returns:
+        (datetime, IntervalReminder): the skipped date (naive UTC, None when
+                                      there is no next date) and the interval
+    Raises:
+        ReminderChanged: the interval isn't stored anymore
+    """
+    interval = _stored(interval)
+    skipped = interval.at
+    if skipped is None:
+        return None, interval
+    exdate = utc_to_rule_frame(skipped, instance_id_of(interval))
+    return skipped, add_rules(interval, exdate=exdate)

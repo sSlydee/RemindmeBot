@@ -4,6 +4,8 @@ from enum import Enum
 from pymongo import MongoClient
 
 from lib.Reminder import Reminder, IntervalReminder
+import lib.timeutil as timeutil
+from lib.timeutil import utc_timestamp
 
 
 import logging
@@ -59,6 +61,7 @@ class Connector:
         Connector.db.settings.delete_one({'g_id': str(guild_id)})
         rem_cursor = Connector.db.reminders.delete_many({'g_id': str(guild_id)})
         intvl_cursor = Connector.db.intervals.delete_many({'g_id': str(guild_id)})
+        Connector.db.delivered.delete_many({'g_id': str(guild_id)})
         
         return (rem_cursor.deleted_count, intvl_cursor.deleted_count)
 
@@ -222,6 +225,26 @@ class Connector:
         else:
             return None
 
+
+    @staticmethod
+    def archive_delivered(reminder: Reminder):
+        """move a delivered reminder out of the pending ones, keeping it a while:
+           the buttons under it (snooze) still need its content
+        """
+        doc = reminder._to_json()
+        doc['_id'] = reminder._id
+        doc['delivered_at'] = utc_timestamp(timeutil.utcnow())
+        Connector.db.delivered.replace_one({'_id': reminder._id}, doc, upsert=True)
+        Connector.delete_reminder(reminder._id)
+
+    @staticmethod
+    def get_delivered(reminder_id):
+        doc = Connector.db.delivered.find_one({'_id': reminder_id})
+        return Reminder(doc) if doc else None
+
+    @staticmethod
+    def delete_delivered_before(timestamp) -> int:
+        return Connector.db.delivered.delete_many({'delivered_at': {'$lt': timestamp}}).deleted_count
 
     @staticmethod
     def delete_reminder(reminder_id):

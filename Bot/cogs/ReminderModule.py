@@ -10,9 +10,10 @@ import discord
 from discord.ext import commands, tasks
 
 from lib.Connector import Connector
-from lib.Reminder import Reminder, IntervalReminder, utc_timestamp
+from lib.Reminder import Reminder, utc_timestamp
 import lib.text
-import util.interaction
+
+import util.reminderButtons
 from util.verboseErrors import VerboseErrors
 from util.loops import log_errors
 from util.heartbeat import Heartbeat
@@ -163,7 +164,7 @@ class ReminderModule(commands.Cog):
             eb = await rem.get_embed(self.client, is_dm=True)
             text = rem.get_embed_text(is_dm=True)
         
-        view = util.interaction.UndeliveredView(reminder_id=rem._id, author_id=rem.author, timeout=300)
+        view = util.reminderButtons.delivered_view(rem)
 
         # first fallback is string-only message
         # second fallback is dm to user
@@ -206,23 +207,12 @@ class ReminderModule(commands.Cog):
         async def send_message(guild, channel, text, embed, rem_type: Connector.ReminderType, reminder, mentions):
             if isinstance(channel, discord.Thread) or VerboseErrors.can_embed(channel):
                 try:
-                    if rem_type != Connector.ReminderType.EMBED_ONLY and \
-                        rem_type != Connector.ReminderType.HYBRID:
-                        view = None
-                    elif  isinstance(reminder, IntervalReminder):                        
-                        view = util.interaction.SnoozeIntervalView(reminder, timeout=500)
+                    if rem_type in (Connector.ReminderType.EMBED_ONLY, Connector.ReminderType.HYBRID):
+                        view = util.reminderButtons.delivered_view(reminder)
                     else:
-                        view = util.interaction.SnoozeView(reminder, timeout=500)
+                        view = None
 
-
-                    tmp_msg = await send_long(channel, text, embed=embed,
-                                    allowed_mentions=mentions,
-                                    view=view)
-
-                    if view:
-                        # for timeout functionality
-                        view.origin = tmp_msg
-                                    
+                    await send_long(channel, text, embed=embed, allowed_mentions=mentions, view=view)
                     return True
                 except discord.errors.Forbidden:
                     if isinstance(channel, discord.Thread) and channel.locked:
@@ -321,11 +311,20 @@ class ReminderModule(commands.Cog):
         log.info('loaded')
 
 
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction):
+        # the buttons under delivered reminders (they have no view in memory)
+        if interaction.type == discord.InteractionType.component:
+            await util.reminderButtons.handle_click(interaction)
+
+
     @tasks.loop(hours=24)
     @log_errors(log)
     async def clean_interval_orphans(self):
         cnt = Connector.delete_orphaned_intervals()
         log.debug(f'deleted {cnt} orphaned interval(s)')
+        cnt = Connector.delete_delivered_before(utc_timestamp(timeutil.utcnow() - util.reminderButtons.DELIVERED_KEEP))
+        log.debug(f'deleted {cnt} delivered reminder(s) kept for their buttons')
 
 
     async def deliver(self, rem: Reminder, due_at, now) -> bool:
@@ -417,8 +416,9 @@ class ReminderModule(commands.Cog):
             failures = 0
 
             # also after an error: a reminder that always fails must not be retried forever
-            # (not in a finally: a shutdown while sending must keep the reminder)
-            Connector.delete_reminder(reminder._id)
+            # (not in a finally: a shutdown while sending must keep the reminder).
+            # Kept a while for the buttons under it (snooze)
+            Connector.archive_delivered(reminder)
 
 
         sent_in = (timeutil.utcnow()-now).total_seconds()

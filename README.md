@@ -11,7 +11,8 @@ public bot of the original author: to use it, run your own instance (see
 * Repeating reminders (`every friday at 20:15`) and complex patterns (iCalendar RRULE, RFC 5545)
 * Remind other users and roles
 * Per-server timezone (per-user in DMs), with daylight saving
-* Snooze delivered reminders, edit them with `/reminder_list`, pause repeating ones
+* Snooze delivered reminders (10 min, 1 hour, tomorrow 9:00 or any time), skip the
+  next date of repeating ones, edit them with `/reminder_list`, pause them
 * Install it on your Discord account to use `/remindme` everywhere, even where the bot is not
 
 <img src="res/remindme.gif" alt="Create a reminder">
@@ -37,7 +38,11 @@ Fixed or added:
 * user install: `/remindme` everywhere, delivered by DM
 * reminders are deleted only after their delivery attempt,
   and the delivery loops survive database errors
-* snooze counts from the click and keeps the whole message
+* snooze counts from the click and keeps the whole message; more snooze
+  choices, and the buttons under delivered reminders (also in DMs) keep
+  working after a restart, for 7 days
+* skip the next date of a repeating reminder, from the delivered message or
+  `/reminder_list`
 * editing a reminder's date (`/remindme` syntax) and image works
 * native Discord channel picker, many interaction fixes
 * timestamps independent of the machine timezone

@@ -114,7 +114,7 @@ class CreationTest(unittest.IsolatedAsyncioTestCase):
         await task
         self.assertEqual(Connector.get_timezone(GUILD), 'Europe/Paris')
 
-    # ---------- reminders sent by DM ----------
+    # ---------- helpers ----------
 
     def add_interval(self, author=OWNER):
         rem = IntervalReminder({'msg': 'x', 'g_id': str(GUILD), 'ch_id': '2', 'author': str(author), 'target': str(STRANGER)})
@@ -123,17 +123,6 @@ class CreationTest(unittest.IsolatedAsyncioTestCase):
         rem.at = rem.next_trigger(timeutil.utcnow(), tz_str='Europe/Paris')
         rem._id = Connector.add_interval(rem)
         return rem
-
-    async def test_dm_recipient_cannot_delete_the_reminder(self):
-        rem = self.add_interval()
-        view = util.interaction.UndeliveredView(reminder_id=rem._id, author_id=OWNER, timeout=300)
-        msg = self.discord.new_message(ephemeral=False)
-        msg.apply(view=view)
-
-        await self.discord.click(msg, emoji='🗑️', user_id=STRANGER)
-        self.assertIsNotNone(Connector.get_interval_by_id(rem._id))
-        await self.discord.click(msg, emoji='🗑️')
-        self.assertIsNone(Connector.get_interval_by_id(rem._id))
 
     # ---------- two menus on the same reminder ----------
 

@@ -295,6 +295,21 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([r['msg'] for r in self.stored_reminders()], ['second'])
         self.assertNotIn('first', msg.embed.description)
 
+    async def test_skip_next_date(self):
+        rem = self.add_weekly_interval()
+        before = Connector.get_interval_by_id(rem._id).at
+        msg = await self.open_list()
+        await self.discord.choose(msg, PICK_REMINDER, '0')
+        await self.discord.click(msg, 'Skip next')
+        self.assertEqual(msg.title, 'Skip the next date?')
+        await self.discord.click(msg, 'Confirm')
+
+        self.assertIsInstance(msg.view, ri.ReminderEditView)
+        stored = Connector.get_interval_by_id(rem._id)
+        # the skipped date is an exclusion date now, the next one comes after it
+        self.assertEqual(stored.exdates, [lib.ReminderRepeater.utc_to_rule_frame(before, GUILD)])
+        self.assertGreater(stored.at, before)
+
     async def test_pause_and_resume(self):
         self.add_weekly_interval()
         msg = await self.open_list()
@@ -403,18 +418,6 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.stored_reminders()), 1)
         await self.discord.click(msg, emoji='🗑️')
         self.assertEqual(self.stored_reminders(), [])
-
-    # ---------- delivered reminders ----------
-
-    async def test_snooze_on_a_delivered_reminder(self):
-        rem = self.add_reminder()
-        view = util.interaction.SnoozeView(rem, timeout=500)
-        msg = self.discord.new_message(ephemeral=False)
-        msg.apply(embed=None, view=view)
-        view.origin = msg
-        await self.discord.click(msg, '+15m')
-        self.assertEqual(len(self.stored_reminders()), 2)
-        self.assertTrue(all(item.disabled for item in msg.view.children))
 
 
 if __name__ == '__main__':

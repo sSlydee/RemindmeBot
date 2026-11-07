@@ -795,6 +795,8 @@ class ReminderEditView(util.interaction.CustomView):
 
 
     def _override_edit_label(self):
+        # skip the next date: repeating reminders with one
+        self.skip_btn.disabled = self.is_foreign or not isinstance(self.reminder, IntervalReminder) or not self.reminder.at
         if isinstance(self.reminder, IntervalReminder):
             self.set_interval.label = 'Edit Interval' # override decorator
             self.pause_btn.disabled = self.is_foreign
@@ -884,6 +886,30 @@ class ReminderEditView(util.interaction.CustomView):
 
         self._override_edit_label()
         await self.show(interaction, embed=self.get_embed(), view=self)
+
+
+    @discord.ui.button(label='Skip next', emoji='⏭️', style=discord.ButtonStyle.secondary, row=1)
+    async def skip_btn(self, button: discord.ui.Button, interaction: discord.Interaction):
+        if not isinstance(self.reminder, IntervalReminder) or not self.reminder.at:
+            await interaction.response.defer()
+            return
+
+        view = util.interaction.ConfirmDenyView()
+        eb = discord.Embed(title='Skip the next date?',
+                           description=f'The reminder won\'t be sent on <t:{int(timeutil.utc_timestamp(self.reminder.at))}:F>.\n'\
+                                       'This adds an exclusion date, which you can delete in `Edit Interval`.')
+        if await self.open_child(interaction, view, embed=eb):
+            return
+
+        if view.value:
+            try:
+                _, self.reminder = lib.ReminderRepeater.skip_next(self.reminder)
+            except lib.ReminderRepeater.ReminderChanged:
+                await self.close(CHANGED_MEANWHILE)
+                return
+
+        self._override_edit_label()
+        await self.show(embed=self.get_embed(), view=self)
 
 
     @discord.ui.button(label='Return', style=discord.ButtonStyle.secondary, row=2)

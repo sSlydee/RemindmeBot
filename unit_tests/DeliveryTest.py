@@ -79,11 +79,12 @@ class DeliveryTest(unittest.IsolatedAsyncioTestCase):
 
     # ---------- one-shot reminders ----------
 
-    async def test_reminder_is_sent_and_deleted(self):
-        self.add_reminder('hello')
+    async def test_reminder_is_sent_and_kept_for_its_buttons(self):
+        rem = self.add_reminder('hello')
         await self.run_reminders()
         self.assertEqual(self.sent, ['hello'])
         self.assertEqual(Connector.db.reminders.count_documents({}), 0)
+        self.assertEqual(Connector.get_delivered(rem._id).msg, 'hello')
 
     async def test_reminder_kept_while_discord_is_down(self):
         self.add_reminder('first')
