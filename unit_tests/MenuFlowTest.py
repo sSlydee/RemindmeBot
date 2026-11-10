@@ -219,6 +219,20 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn(in_paris(at).weekday(), (5, 6))
             self.assertEqual(in_paris(at).time(), in_paris(rem.at).time())
 
+    async def test_new_rule_shows_the_next_five_dates(self):
+        self.add_reminder()
+        msg = await self.open_interval_menu()
+        await self.discord.choose(msg, QUICK_REPEAT, 'daily')
+        [field] = msg.embed.fields
+        self.assertEqual(field.name, 'Next dates of this rule')
+        self.assertEqual(len(field.value.splitlines()), 5)
+
+        # once saved, the interval menu shows the next five too
+        await self.discord.click(msg, 'Confirm')
+        await self.discord.click(msg, 'Return')
+        upcoming = next(f for f in msg.embed.fields if f.name == 'Next occurrences')
+        self.assertEqual(len(upcoming.value.splitlines()), 5)
+
     async def test_two_menus_on_the_same_reminder(self):
         self.add_reminder()
         first = await self.open_interval_menu()

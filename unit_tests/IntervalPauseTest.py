@@ -3,8 +3,11 @@ import unittest
 from unittest.mock import patch
 from datetime import datetime
 
+import discord
+
 import lib.Connector
 from lib.Reminder import IntervalReminder
+from lib.timeutil import utc_timestamp
 
 
 def _weekly_friday_7():
@@ -22,6 +25,17 @@ class IntervalUpcomingTest(unittest.TestCase):
         rem = _weekly_friday_7()
         self.assertEqual(rem.upcoming(3, tz_str='Europe/Paris'),
                          [datetime(2026, 11, 13, 6, 0), datetime(2026, 11, 20, 6, 0), datetime(2026, 11, 27, 6, 0)])
+
+    def test_menus_show_the_next_five(self):
+        eb = discord.Embed()
+        _weekly_friday_7().add_upcoming_field(eb, tz_str='Europe/Paris')
+        [field] = eb.fields
+        self.assertEqual(field.name, 'Next occurrences')
+        lines = field.value.splitlines()
+        self.assertEqual(len(lines), 5)
+        # Fridays 07:00 in Paris, from 13 Nov to 11 Dec
+        self.assertEqual(lines[0], f'<t:{int(utc_timestamp(datetime(2026, 11, 13, 6)))}:F>')
+        self.assertEqual(lines[-1], f'<t:{int(utc_timestamp(datetime(2026, 12, 11, 6)))}:F>')
 
     def test_upcoming_stops_at_the_last_occurrence(self):
         rem = _weekly_friday_7()

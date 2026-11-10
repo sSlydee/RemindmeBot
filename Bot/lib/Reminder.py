@@ -14,6 +14,8 @@ import lib.Connector  # KEEP this syntax, circular import
 # the 🔁 before the footer of repeating reminders: Twemoji, from a CDN copy of a
 # fixed version (the Emojipedia URL used before is gone)
 REPEAT_ICON_URL = 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/1f501.png'
+# how many next dates are shown for a repeating reminder or a new rule
+UPCOMING_COUNT = 5
 
 
 log = logging.getLogger('Remindme.Reminder')
@@ -379,7 +381,7 @@ class IntervalReminder(Reminder):
         return d
 
 
-    def upcoming(self, count=3, tz_str=None) -> list:
+    def upcoming(self, count=UPCOMING_COUNT, tz_str=None) -> list:
         """the next occurrences (naive UTC), starting with .at"""
         if not self.at:
             return []
@@ -398,7 +400,7 @@ class IntervalReminder(Reminder):
 
     def add_upcoming_field(self, eb: discord.Embed, tz_str=None):
         """add the next occurrences to the embed, to check the rules at a glance"""
-        dates = self.upcoming(3, tz_str=tz_str)
+        dates = self.upcoming(UPCOMING_COUNT, tz_str=tz_str)
         if not dates:
             return
         lines = [f'<t:{int(utc_timestamp(d))}:F>' for d in dates]

@@ -11,7 +11,7 @@ from util.consts import Consts
 import util.verboseErrors
 import lib.input_parser
 import lib.ReminderRepeater
-from lib.Reminder import Reminder, IntervalReminder
+from lib.Reminder import Reminder, IntervalReminder, UPCOMING_COUNT
 from lib.Connector import Connector
 
 log = logging.getLogger('Remindme.Listing')
@@ -497,7 +497,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
 
     @staticmethod
-    def _preview(rrule, rule_tz: str, count: int = 3) -> str:
+    def _preview(rrule, rule_tz: str, count: int = UPCOMING_COUNT) -> str:
         """the next dates of a rule (rule frame: local time) as Discord timestamps"""
         local_tz = tz.gettz(rule_tz)
         local_now = timeutil.utcnow().replace(tzinfo=tz.UTC).astimezone(local_tz).replace(tzinfo=None)

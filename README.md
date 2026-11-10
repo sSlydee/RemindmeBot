@@ -100,8 +100,9 @@ Interval** in `/reminder_list`):
 * **Add Exception Rule**: dates to skip (`every saturday`);
 * **Add Single Date** / **Add Exception Date**: one extra date, or one date to skip.
 
-Before adding a rule, the bot shows its next three dates. A repeating
-reminder can combine up to 25 rules and dates. In `/reminder_list` you can
+Before adding a rule, the bot shows its next five dates, and the menus of a
+repeating reminder show its next five occurrences. A repeating reminder can
+combine up to 25 rules and dates. In `/reminder_list` you can
 also **Pause** it (its dates go on, nothing is sent) or **Skip next**.
 
 ### When a reminder is delivered
