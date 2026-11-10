@@ -11,6 +11,7 @@ from pathlib import Path
 from discord.ext.help import Help, HelpPage
 
 from lib.Connector import Connector
+import lib.timeutil as timeutil
 from util.consts import Consts
 
 
@@ -179,15 +180,18 @@ async def on_error(event_method, *args, **kwargs):
 
 @bot.event
 async def on_guild_remove(guild):
-    # leaving a server deletes its reminders and settings
-    del_rem, del_intvl = Connector.delete_guild(guild.id)
-    log.info(f'removed from guild {guild.id}: deleted {del_rem} reminder(s) and {del_intvl} interval(s)')
+    # a mistake is easy to undo: the reminders and settings are kept a few days
+    # (not sent meanwhile), and deleted by the daily clean-up after that
+    kept = Connector.guild_left(guild.id, timeutil.utcnow())
+    log.info(f'removed from guild {guild.id}: its {kept} reminder(s) are kept {Consts.left_guild_keep.days} days')
 
 
 
 
 @bot.event
 async def on_guild_join(guild):
+    if Connector.guild_back(guild.id):
+        log.info(f'back in guild {guild.id}: its reminders are sent again')
     log.info(f'added to guild {guild.id} (total count: {len(bot.guilds)})')
 
 # #############

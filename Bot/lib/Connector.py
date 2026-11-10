@@ -57,6 +57,45 @@ class Connector:
 
 
     @staticmethod
+    def guild_left(guild_id: int, utcnow) -> int:
+        """the bot was removed from a server: keep its data, stop sending its reminders
+
+        Returns:
+            int: its reminders and intervals, kept until purge_left_guilds
+        """
+        Connector.db.settings.find_one_and_update({'g_id': str(guild_id)},
+                                                  {'$set': {'left_at': utc_timestamp(utcnow)}}, upsert=True)
+        return (Connector.db.reminders.count_documents({'g_id': str(guild_id)})
+                + Connector.db.intervals.count_documents({'g_id': str(guild_id)}))
+
+    @staticmethod
+    def guild_back(guild_id: int) -> bool:
+        """the bot was added to a server again: its reminders are sent again
+
+        Returns:
+            bool: True if the server had been left (its data was kept)
+        """
+        found = Connector.db.settings.find_one_and_update({'g_id': str(guild_id), 'left_at': {'$exists': True}},
+                                                          {'$unset': {'left_at': ''}})
+        return found is not None
+
+    @staticmethod
+    def _left_guilds() -> list:
+        return [doc['g_id'] for doc in Connector.db.settings.find({'left_at': {'$exists': True}}, {'g_id': 1})]
+
+    @staticmethod
+    def purge_left_guilds(left_before) -> list:
+        """delete the data of the servers left before that date (naive UTC)
+
+        Returns:
+            list: (guild id, reminders, intervals) deleted
+        """
+        purged = []
+        for doc in Connector.db.settings.find({'left_at': {'$lt': utc_timestamp(left_before)}}, {'g_id': 1}):
+            purged.append((doc['g_id'], *Connector.delete_guild(int(doc['g_id']))))
+        return purged
+
+    @staticmethod
     def delete_guild(guild_id: int):
         Connector.db.settings.delete_one({'g_id': str(guild_id)})
         rem_cursor = Connector.db.reminders.delete_many({'g_id': str(guild_id)})
@@ -202,7 +241,9 @@ class Connector:
         """get the reminders due before timestamp, without deleting them
            the caller deletes each one once it was handled
         """
-        rems =  list(Connector.db.reminders.find({'at': {'$lt': timestamp}}))
+        # not the ones of servers the bot was removed from (kept a few days)
+        query = {'at': {'$lt': timestamp}, 'g_id': {'$nin': Connector._left_guilds()}}
+        rems =  list(Connector.db.reminders.find(query))
         rems = list(map(Reminder, rems))
 
         return rems
@@ -210,7 +251,8 @@ class Connector:
     @staticmethod
     def get_pending_intervals(timestamp):
 
-        intvl =  list(Connector.db.intervals.find({'at': {'$lt': timestamp}}))
+        query = {'at': {'$lt': timestamp}, 'g_id': {'$nin': Connector._left_guilds()}}
+        intvl =  list(Connector.db.intervals.find(query))
         intvl = list(map(IntervalReminder, intvl))
 
         return intvl

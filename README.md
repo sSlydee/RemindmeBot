@@ -201,6 +201,11 @@ local time when it changes.
 
 Changing the server settings needs the **Manage Server** permission.
 
+When the bot is removed from a server, its reminders and settings are kept 7
+days, and nothing is sent meanwhile. Added back within that time, it picks up
+where it was (the reminders missed in between are sent, marked *⏰ Sent late*);
+after that, they are deleted.
+
 ### Limits
 
 | | |

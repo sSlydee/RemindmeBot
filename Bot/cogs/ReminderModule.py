@@ -379,6 +379,9 @@ class ReminderModule(commands.Cog):
         log.debug(f'deleted {cnt} orphaned interval(s)')
         cnt = Connector.delete_delivered_before(utc_timestamp(timeutil.utcnow() - util.reminderButtons.DELIVERED_KEEP))
         log.debug(f'deleted {cnt} delivered reminder(s) kept for their buttons')
+        for guild_id, rems, intvls in Connector.purge_left_guilds(timeutil.utcnow() - Consts.left_guild_keep):
+            log.info(f'guild {guild_id} left {Consts.left_guild_keep.days} days ago: '
+                     f'deleted {rems} reminder(s) and {intvls} interval(s)')
 
 
     async def deliver(self, rem: Reminder, due_at, now) -> bool:
