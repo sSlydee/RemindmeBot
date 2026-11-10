@@ -24,6 +24,14 @@ public bot you can invite: run your own instance (see [Self-hosting](#self-hosti
   with their dates in your own language and timezone, and lets you edit,
   move, pause or delete them.
 * **Timezones** per server, or per user in DMs, with daylight saving.
+* **In French** for members whose Discord is in French, and French times are
+  understood for everyone: `demain 9h`, `tous les lundis à 9h`.
+* **For shared servers**: `/remind` for moderators by default, reminders for
+  you or that mention you under *For me*, the whole server's for moderators,
+  delivery by DM per reminder or for the whole server, a privacy note in
+  `/help`.
+* **Nothing lost**: a reminder sent late says so, and a server that removes
+  the bot by mistake keeps its reminders for 7 days.
 * **Install it on your account** to use `/remindme` everywhere, even in DMs
   and servers the bot is not in: those reminders come by DM.
 
@@ -38,9 +46,9 @@ public bot you can invite: run your own instance (see [Self-hosting](#self-hosti
 /remindme time: every monday at 9:00  message: weekly report
 ```
 
-`/remindme` reminds you, `/remind` reminds another user or a role. The reply
-shows when the reminder will come, with three buttons: **Set Interval** (make
-it repeat), **Edit** and 🗑️.
+`/remindme` reminds you, `/remind` reminds another user or a role. The reply,
+only shown to you by default (see `/settings`), says when the reminder will
+come, with three buttons: **Set Interval** (make it repeat), **Edit** and 🗑️.
 
 As it pings other members, `/remind` is for members with the **Manage
 Messages** permission by default. A server admin can open it to other roles
@@ -82,9 +90,10 @@ Monday at the time you typed it (`next friday` is at 9:00).
 `demain à 18h30`, `vendredi 9h`, `après-demain 10h`, `dans 3 jours`,
 `le 15 janvier à 9h`, `midi`.
 
-Reminders are delivered within a minute of their time. When the bot or
-Discord was down, they are sent once it is back (up to a day later), marked
-*⏰ Sent late* with the time they were due.
+Reminders are delivered within a minute of their time. When the bot was
+stopped, the missed ones are sent once it is back; when Discord can't be
+reached, the bot tries again for up to a day. Either way, a reminder sent more
+than 5 minutes after its time is marked *⏰ Sent late*, with the time it was due.
 
 ### Repeating reminders
 
@@ -98,6 +107,7 @@ every first monday of the month
 every month on the 15th at 9:00
 every year on 1 july at 10:00
 tous les lundis à 9h
+tous les 15 du mois à 9h
 tous les jours à 8h30 jusqu'au 20 décembre
 ```
 
@@ -233,6 +243,7 @@ buttons; daily backups 14 days; a removed server's data 7 days.
 | | |
 |---|---|
 | message | 4000 characters (longer text-only reminders are sent in several messages) |
+| time | 100 characters |
 | pending reminders | 100 per user |
 | repetitions | at most every 10 minutes, with a date in the next 10 years |
 | rules of a repeating reminder | 25 |
@@ -244,7 +255,7 @@ buttons; daily backups 14 days; a removed server's data 7 days.
 | `/remindme time message` | remind yourself |
 | `/remind target time message` | remind another user or a role (Manage Messages by default) |
 | `/reminder_list` | list, edit and delete your reminders (and the ones for you, or the whole server's) |
-| `/timezone timezone` | set the timezone of the server, or your own in DMs |
+| `/timezone new_timezone` | set the timezone of the server, or your own in DMs |
 | `/settings` | reminder style, creation reply and DM delivery of the server |
 | `/help` | help pages (the time syntax, privacy), only shown to you |
 
@@ -378,8 +389,12 @@ persistent buttons with more snooze choices and *skip next*, pause, the new
 `/reminder_list`, user install, mentions limited to what the author may ping,
 `/remind` for moderators by default, reminders of members who left dropped,
 reminders for you and of the whole server (moderators) in `/reminder_list`,
-retries when Discord is unreachable, and many fixes to the menus and the
-delivery (see the commit history).
+retries when Discord is unreachable, the bot and its time parser in French,
+delivery by DM, the *Sent late* mark, a removed server's data kept 7 days, the
+privacy note, `/help` only shown to whoever asks it (without *Invite Me*), the
+creation reply hidden by default, deletion by the members a reminder mentions
+(its author is told), and many fixes to the menus and the delivery (see the
+commit history).
 
 ## Credits
 
