@@ -15,6 +15,7 @@ from lib.Reminder import Reminder, IntervalReminder
 import lib.permissions
 import lib.input_parser
 import lib.ReminderRepeater
+from lib.i18n import lang_of, tr, hints, date_str
 import util.interaction
 import util.reminderInteraction
 
@@ -30,28 +31,30 @@ MAX_REMINDERS_PER_USER = 100
 
 # suggested while the 'time' field is empty
 TIME_EXAMPLES = ['in 2h', 'tomorrow 9:00', 'friday 18:30', 'every monday at 9:00']
+TIME_EXAMPLES_FR = ['dans 2h', 'demain 9h', 'vendredi 18h30', 'tous les lundis à 9h']
 
 
-def _in_words(delta: timedelta) -> str:
+def _in_words(delta: timedelta, lang='en') -> str:
     minutes = int(delta.total_seconds() // 60)
     if minutes < 60:
-        return f'in {max(minutes, 1)} min'
+        return tr(lang, 'in {n} min', n=max(minutes, 1))
     hours = minutes // 60
     if hours < 48:
-        return f'in {hours} h {minutes % 60:02d}' if minutes % 60 else f'in {hours} h'
-    return f'in {hours // 24} days'
+        if minutes % 60:
+            return tr(lang, 'in {h} h {m}', h=hours, m=f'{minutes % 60:02d}')
+        return tr(lang, 'in {h} h', h=hours)
+    return tr(lang, 'in {d} days', d=hours // 24)
 
 
-def describe_time(text: str, utcnow: datetime, tz_str: str) -> str:
+def describe_time(text: str, utcnow: datetime, tz_str: str, lang='en') -> str:
     """how /remindme reads its 'time' (shown while it is typed),
-       in the local time of the server or user
+       in the local time of the server or user, in the user's language
     """
     local_tz = tz.gettz(tz_str)
     local_now = utcnow.replace(tzinfo=tz.UTC).astimezone(local_tz)
 
     def local_str(local_dt):
-        fmt = '%a %d %b %H:%M' if local_dt.year == local_now.year else '%a %d %b %Y %H:%M'
-        return local_dt.strftime(fmt)
+        return date_str(local_dt, lang, with_year=local_dt.year != local_now.year)
 
     at, _ = lib.input_parser.parse(text.strip(), utcnow, tz_str)
 
@@ -59,18 +62,18 @@ def describe_time(text: str, utcnow: datetime, tz_str: str) -> str:
         dtstart = timeutil.to_minute(local_now.replace(tzinfo=None))
         rule, error = lib.input_parser.rrule_normalize(at, dtstart=dtstart, tz_str=tz_str)
         if not rule:
-            return '⚠ ' + (error or 'invalid repetition').splitlines()[0]
+            return '⚠ ' + (hints(lang, error.splitlines()[0]) if error else tr(lang, 'invalid repetition'))
         first = rule.after(dtstart)
         if not first:
-            return '⚠ this repetition has no date in the future'
+            return tr(lang, '⚠ this repetition has no date in the future')
         first_utc = first.replace(tzinfo=local_tz).astimezone(tz.UTC).replace(tzinfo=None)
-        return f'repeats, first {local_str(first)} ({_in_words(first_utc - utcnow)})'
+        return tr(lang, 'repeats, first {date} ({when})', date=local_str(first), when=_in_words(first_utc - utcnow, lang))
 
     if not isinstance(at, datetime) or at == utcnow:
-        return '⚠ can\'t read this date'
+        return tr(lang, '⚠ can\'t read this date')
     if at < utcnow:
-        return '⚠ this date is in the past'
-    return f'{local_str(at.replace(tzinfo=tz.UTC).astimezone(local_tz))} ({_in_words(at - utcnow)})'
+        return tr(lang, '⚠ this date is in the past')
+    return f'{local_str(at.replace(tzinfo=tz.UTC).astimezone(local_tz))} ({_in_words(at - utcnow, lang)})'
 
 
 async def time_autocomplete(ctx: discord.AutocompleteContext):
@@ -81,10 +84,12 @@ async def time_autocomplete(ctx: discord.AutocompleteContext):
         personal = lib.permissions.is_personal_context(ctx)
         tz_str = Connector.get_timezone(interaction.user.id if personal else interaction.guild_id)
         utcnow = timeutil.utcnow()
+        lang = lang_of(interaction)
         if not text:
-            return [discord.OptionChoice(name=f'{ex} → {describe_time(ex, utcnow, tz_str)}'[:100], value=ex)
-                    for ex in TIME_EXAMPLES]
-        return [discord.OptionChoice(name=f'{text[:40]} → {describe_time(text, utcnow, tz_str)}'[:100],
+            examples = TIME_EXAMPLES_FR if lang == 'fr' else TIME_EXAMPLES
+            return [discord.OptionChoice(name=f'{ex} → {describe_time(ex, utcnow, tz_str, lang)}'[:100], value=ex)
+                    for ex in examples]
+        return [discord.OptionChoice(name=f'{text[:40]} → {describe_time(text, utcnow, tz_str, lang)}'[:100],
                                      value=text[:100])]
     except Exception:
         log.exception('time preview failed')
@@ -100,11 +105,12 @@ class NewReminderView(util.interaction.CustomView):
         self.rrule_override = rrule_override
         self.owner_id = reminder.author
 
-        if isinstance(self.reminder, IntervalReminder):
-            self.edit_interval.label='Edit Interval'
+        lang = stm.lang
+        self.edit_interval.label = tr(lang, 'Edit Interval' if isinstance(reminder, IntervalReminder) else 'Set Interval')
+        self.edit_reminder.label = tr(lang, 'Edit')
 
     def get_embed(self) -> discord.Embed:
-        return self.reminder.get_tiny_embed(info=self.info_str, rrule_override=self.rrule_override)
+        return self.reminder.get_tiny_embed(info=self.info_str, rrule_override=self.rrule_override, lang=self.stm.lang)
 
 
     @discord.ui.button(label='Set Interval', emoji='🔁', style=discord.ButtonStyle.primary)
@@ -115,7 +121,7 @@ class NewReminderView(util.interaction.CustomView):
             return
         self.reminder = view.reminder # could be an interval with different id now
         if isinstance(self.reminder, IntervalReminder):
-            self.edit_interval.label = 'Edit Interval'
+            self.edit_interval.label = tr(self.stm.lang, 'Edit Interval')
 
         # back to this menu
         await self.show(embed=self.get_embed(), view=self)
@@ -124,7 +130,7 @@ class NewReminderView(util.interaction.CustomView):
     @discord.ui.button(label='Edit', emoji='🛠️', style=discord.ButtonStyle.secondary)
     async def edit_reminder(self, button: discord.ui.Button, interaction: discord.Interaction):
         if self.reminder.author != interaction.user.id:
-            eb = discord.Embed(title='Cannot edit reminders of other users', color=Consts.col_crit)
+            eb = discord.Embed(title=tr(lang_of(interaction), 'Cannot edit reminders of other users'), color=Consts.col_crit)
             self.disable_all()
             self.del_reminder.style = discord.ButtonStyle.danger # keep this btn red
             await self.show(interaction, embed=eb, view=self)
@@ -133,7 +139,7 @@ class NewReminderView(util.interaction.CustomView):
         modal = util.reminderInteraction.EditModal(reminder=self.reminder,
                                                     custom_callback=self.edit_done,
                                                     tz_str=self.stm.tz_str,
-                                                    title='Edit the Reminder')
+                                                    title=tr(lang_of(interaction), 'Edit the Reminder'))
         await util.interaction.open_popup(interaction, modal)
 
 
@@ -141,7 +147,8 @@ class NewReminderView(util.interaction.CustomView):
         """the edit popup was submitted (interaction), info: what wasn't changed"""
         reloaded = util.reminderInteraction.reload_reminder(self.reminder)
         if reloaded is None or self.is_finished():
-            text = 'Saved.' if reloaded else 'This reminder was delivered or deleted while you edited it.'
+            lang = lang_of(interaction)
+            text = tr(lang, 'Saved.') if reloaded else tr(lang, 'This reminder was delivered or deleted while you edited it.')
             await interaction.response.send_message(f'{text} {info}'.strip(), ephemeral=True)
             return
 
@@ -155,17 +162,18 @@ class NewReminderView(util.interaction.CustomView):
     @discord.ui.button(emoji='🗑️', style=discord.ButtonStyle.danger)
     async def del_reminder(self, button: discord.ui.Button, interaction: discord.Interaction):
         eb_title = None
+        lang = lang_of(interaction)
         if self.reminder.author != interaction.user.id:
-            eb_title = 'Cannot delete reminders of other users'
+            eb_title = tr(lang, 'Cannot delete reminders of other users')
             color = Consts.col_crit
         elif Connector.delete_reminder(self.reminder._id):
-            eb_title = 'Deleted the reminder'
+            eb_title = tr(lang, 'Deleted the reminder')
             color = Consts.col_warn
         elif Connector.delete_interval(self.reminder._id):
-            eb_title = 'Deleted the reminder'
+            eb_title = tr(lang, 'Deleted the reminder')
             color = Consts.col_warn
         else:
-            eb_title = 'Failed to delete reminder due to an unknown issue'
+            eb_title = tr(lang, 'Failed to delete reminder due to an unknown issue')
             color = Consts.col_crit
             log.error(f'Couldn\'t direct-delete a reminder of type {type(self.reminder)}. Both delete queries didn\'t suceed.')
 
@@ -200,6 +208,26 @@ class ReminderCreation(commands.Cog):
                 '\n'\
                 'Call `/help page: syntax` for more detailed information.\n'
                 
+    REMIND_FORMAT_HELP_FR = \
+                'exemple simple :\n'\
+                '> /remindme `time: dans 2 jours` `message: Bonjour`\n'\
+                '\n'\
+                'rappeler d’autres membres ou un rôle\n'\
+                '> /remind `target: @Rôle` `time: 24 décembre` `message: Joyeux Noël`\n'\
+                '\n'\
+                'créer des rappels qui se répètent\n'\
+                '> /remindme `time: tous les vendredis à 20h15` `message: faire un truc`\n'\
+                '\n'\
+                'd’autres formats\n'\
+                '```'\
+                '• demain 9h, vendredi à 18h30, dans 3 jours\n'\
+                '• 5 juillet, 23 août à 15h\n'\
+                '• toutes les 2 semaines, tous les mois le 15\n'\
+                '\n'\
+                '```'\
+                '\n'\
+                '`/help page: syntax` pour tous les détails.\n'
+
     HELP_FOOTER = 'The time formats are on the syntax page of /help.'
 
 
@@ -216,6 +244,10 @@ class ReminderCreation(commands.Cog):
 
         # DMs, or a server where only the user installed the app: private reminder, by DM
         personal = lib.permissions.is_personal_context(ctx)
+        lang = lang_of(ctx)
+        format_help = ReminderCreation.REMIND_FORMAT_HELP_FR if lang == 'fr' else ReminderCreation.REMIND_FORMAT_HELP
+        failed = tr(lang, 'Failed to create the reminder')
+        footer = tr(lang, ReminderCreation.HELP_FOOTER)
 
         # Discord waits 3 seconds for an answer: only quick database reads before it
         instance_id = author.id if personal else ctx.guild.id
@@ -223,9 +255,9 @@ class ReminderCreation(commands.Cog):
         auto_del_action = Connector.get_auto_delete(instance_id)
 
         if Connector.count_user_reminders(author.id) >= MAX_REMINDERS_PER_USER:
-            embed = discord.Embed(title='Failed to create the reminder', color=0xff0000,
-                                  description=f'You already have {MAX_REMINDERS_PER_USER} pending reminders. '\
-                                              'Delete some with `/reminder_list` first.')
+            embed = discord.Embed(title=failed, color=0xff0000,
+                                  description=tr(lang, 'You already have {n} pending reminders. Delete some with '
+                                                       '`/reminder_list` first.', n=MAX_REMINDERS_PER_USER))
             await ctx.respond(embed=embed, ephemeral=True)
             return
 
@@ -237,31 +269,31 @@ class ReminderCreation(commands.Cog):
             interval = (remind_at - utcnow)
             if remind_at is None or interval <= timedelta(hours=0):
                 if info != '':
-                    out_str = f'```Parsing hints:\n{info}```\n'
+                    out_str = f'```{tr(lang, "Parsing hints")}:\n{hints(lang, info)}```\n'
                 else:
                     out_str = ''
 
                 if interval == timedelta(hours=0):
                     # only append full help on invalid strings
                     # not on negative intervals
-                    out_str += ReminderCreation.REMIND_FORMAT_HELP
+                    out_str += format_help
                 elif interval < timedelta(hours=0):
-                    out_str += 'Make sure your server is using the correct timezone `/timezone`'
+                    out_str += tr(lang, 'Make sure your server is using the correct timezone `/timezone`')
 
-                embed = discord.Embed(title='Failed to create the reminder', color=0xff0000, description=out_str)
-                embed.set_footer(text=ReminderCreation.HELP_FOOTER)
+                embed = discord.Embed(title=failed, color=0xff0000, description=out_str)
+                embed.set_footer(text=footer)
                 await ctx.respond(embed=embed, ephemeral=True)
                 return  # error exit
 
         elif remind_at is None:
             if info != '':
-                out_str = f'```Parsing hints:\n{info}```\n'
+                out_str = f'```{tr(lang, "Parsing hints")}:\n{hints(lang, info)}```\n'
             else:
                 out_str = ''
-            out_str += ReminderCreation.REMIND_FORMAT_HELP
+            out_str += format_help
 
-            embed = discord.Embed(title='Failed to create the reminder', color=0xff0000, description=out_str)
-            embed.set_footer(text=ReminderCreation.HELP_FOOTER)
+            embed = discord.Embed(title=failed, color=0xff0000, description=out_str)
+            embed.set_footer(text=footer)
             await ctx.respond(embed=embed, ephemeral=True)
             return  
 
@@ -277,14 +309,14 @@ class ReminderCreation(commands.Cog):
                 rrule, info = None, '• this repetition has no date in the future'
             if not rrule:
                 if info != '':
-                    out_str = f'```Parsing hints:\n{info}```\n'
+                    out_str = f'```{tr(lang, "Parsing hints")}:\n{hints(lang, info)}```\n'
                 else:
                     # only show general help, if normalizing doesn't give
                     # specific error
-                    out_str = ReminderCreation.REMIND_FORMAT_HELP
+                    out_str = format_help
 
-                embed = discord.Embed(title='Failed to create the reminder', color=0xff0000, description=out_str)
-                embed.set_footer(text=ReminderCreation.HELP_FOOTER)
+                embed = discord.Embed(title=failed, color=0xff0000, description=out_str)
+                embed.set_footer(text=footer)
                 await ctx.respond(embed=embed, ephemeral=True)
                 return
 
@@ -320,7 +352,7 @@ class ReminderCreation(commands.Cog):
                     rem.ch_name = channel.name[0:25] # only keep first 25 letters   
                 except discord.errors.Forbidden:
                     rem.ch_name = '*Unresolved Channel*'
-                    info += f'\n• Failed to resolve the target channel. The reminder *might* not be delivered due to missing permissions.' 
+                    info += tr(lang, '\n• Failed to resolve the target channel. The reminder *might* not be delivered due to missing permissions.')
             else:
                 # channel name by attribute
                 rem.ch_name = channel.name[0:25] # only keep first 25 letters
@@ -330,12 +362,15 @@ class ReminderCreation(commands.Cog):
             rem.ch_id = channel.id
 
             if rem.ch_id != ctx.channel_id:
-                info += f'\n• This reminder will be delivered to `{rem.ch_name}`.\nMake sure this bot has permission to send messages into that channel'
+                info += tr(lang, '\n• This reminder will be delivered to `{channel}`.\nMake sure this bot has permission to send '
+                               'messages into that channel', channel=rem.ch_name)
 
 
         rem.msg = message
         rem.at = remind_at
         rem.author = author.id
+        # what the bot sends later is in the author's language
+        rem.lang = lang
 
         rem.created_at = utcnow
         rem.last_msg_id = last_msg.id if last_msg else None
@@ -428,12 +463,15 @@ class ReminderCreation(commands.Cog):
     # pinging others: moderators only by default. Admins can open it to other
     # roles in Server Settings > Integrations (/remindme stays open to all)
     @commands.slash_command(name='remind', description='Remind another member or a role (moderators by default)',
+                            description_localizations={'fr': 'Rappeler un autre membre ou un rôle (modérateurs par défaut)'},
                             default_member_permissions=discord.Permissions(manage_messages=True))
     async def remind_user(self, ctx:discord.ApplicationContext,
-                        target:discord.Option((discord.Member, discord.Role), 'the member or role to remind', required=True),
+                        target:discord.Option((discord.Member, discord.Role), 'the member or role to remind', required=True,
+                                              description_localizations={'fr': 'le membre ou le rôle à qui rappeler'}),
                         time:discord.Option(str, 'when: in 2h, tomorrow 9:00, every friday at 7 (see /help)', required=True,
-                                            autocomplete=time_autocomplete),
+                                            autocomplete=time_autocomplete, description_localizations={'fr': 'quand : dans 2h, demain 9h, tous les vendredis à 7h (voir /help)'}),
                         message:discord.Option(str, 'what to remind them of', required=True,
+                                               description_localizations={'fr': 'de quoi lui rappeler'},
                                                max_length=MAX_MESSAGE_LEN)):
                         #channel:discord.Option((discord.TextChannel,discord.VoiceChannel), 'Show the reminder in a channel other than the current one', required=False)=None):
 
@@ -446,11 +484,13 @@ class ReminderCreation(commands.Cog):
     
 
     @commands.slash_command(name='remindme', description='Set a reminder for yourself',
+                            description_localizations={'fr': 'Créer un rappel pour toi'},
                             **lib.permissions.EVERYWHERE)
     async def remindme(self, ctx:discord.ApplicationContext,
                         time:discord.Option(str, 'when: in 2h, tomorrow 9:00, every friday at 7 (see /help)', required=True,
-                                            autocomplete=time_autocomplete),
+                                            autocomplete=time_autocomplete, description_localizations={'fr': 'quand : dans 2h, demain 9h, tous les vendredis à 7h (voir /help)'}),
                         message:discord.Option(str, 'what to remind you of', required=True,
+                                               description_localizations={'fr': 'de quoi te rappeler'},
                                                max_length=MAX_MESSAGE_LEN)):
                         #channel:discord.Option((discord.TextChannel,discord.VoiceChannel), 'Show the reminder in a channel other than the current one', required=False)=None):
         channel = None

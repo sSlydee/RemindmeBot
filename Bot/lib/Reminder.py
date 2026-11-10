@@ -9,6 +9,7 @@ import logging
 
 import lib.input_parser
 import lib.text
+from lib.i18n import tr, hints, plural
 import lib.timeutil as timeutil
 from lib.timeutil import utc_timestamp, utc_from_timestamp  # noqa: F401 (re-exported)
 import lib.Connector  # KEEP this syntax, circular import
@@ -56,6 +57,8 @@ class Reminder:
         self.by_dm = json.get('by_dm', False)
         # the date it was due, when it is sent late (not stored)
         self.late_due_at = None
+        # the language of its author ('en', 'fr'): of what the bot sends later
+        self.lang = json.get('lang', 'en')
 
         author = json.get('author', None)
         self.author = int(author) if author else None
@@ -108,6 +111,7 @@ class Reminder:
         d['target_name'] = self.target_name
         d['ch_name'] = self.ch_name
         d['by_dm'] = self.by_dm
+        d['lang'] = self.lang
         d['author'] = str(self.author) if self.author else None
         d['last_msg_id'] = str(self.last_msg_id) if self.last_msg_id else None
         
@@ -123,7 +127,7 @@ class Reminder:
 
 
     
-    def get_interval_string(self, now=None, use_timestamp=False):
+    def get_interval_string(self, now=None, use_timestamp=False, lang=None):
         """get a string describing the interval until reminder is triggered
            if self.at is None, returns verbose string showing no future occurrence
 
@@ -131,8 +135,9 @@ class Reminder:
             [str]: [description]
         """
 
+        lang = lang or self.lang
         if not self.at:
-            return 'No future occurrence'
+            return tr(lang, 'No future occurrence')
         
         if not now:
             now = timeutil.utcnow()  
@@ -159,20 +164,21 @@ class Reminder:
 
 
         if weeks > 104:
-            return '{:d} years and {:d} weeks'.format(years, weeks_years)
+            text = tr(lang, '{y} years and {w} weeks', y=years, w=weeks_years)
         elif weeks > 10:
-            return '{:d} weeks and {:d} days'.format(weeks, days_weeks)
+            text = tr(lang, '{w} weeks and {d} days', w=weeks, d=days_weeks)
         elif days > 14:
-            return '{:d} days and {:d} hours'.format(days, hour_days)
+            text = tr(lang, '{d} days and {h} hours', d=days, h=hour_days)
         elif hours > 48:
-            return '{:d} days ({:02d} hours)'.format(int(hours/24), int(hours))
+            text = tr(lang, '{d} days ({h} hours)', d=int(hours/24), h=f'{int(hours):02d}')
         elif hours > 0:
-            return '{:02d} h {:02d} m'.format(int(hours), int(mins))
+            text = tr(lang, '{h} h {m} m', h=f'{int(hours):02d}', m=f'{int(mins):02d}')
         else:
-            return '{:d} minutes'.format(int(mins))
+            text = tr(lang, '{m} minutes', m=int(mins))
+        return plural(lang, text)
 
 
-    async def get_string(self, client=None, is_dm=False, barebone=False):
+    async def get_string(self, client=None, is_dm=False, barebone=False, lang=None):
         """return string description of this reminder
 
         Args:
@@ -182,6 +188,7 @@ class Reminder:
             [type]: [description]
         """
 
+        lang = lang or self.lang
         # only get the author object
         # if the author is actually required
         author = None
@@ -202,19 +209,19 @@ class Reminder:
             if self.target == self.author:
                 out_str += f' {self.msg}'
             elif author:
-                out_str += f' {self.msg} (by {author.display_name})'
+                out_str += ' ' + tr(lang, '{text} (by {name})', text=self.msg, name=author.display_name)
             else:
-                out_str += f' {self.msg} (by <@!{self.author}>)'
+                out_str += ' ' + tr(lang, '{text} (by {name})', text=self.msg, name=f'<@!{self.author}>')
 
             if self.img_url:
                 out_str += f'\n{self.img_url}'
             if self.late_due_at:
-                out_str += f'\n⏰ {self.late_text()}'
+                out_str += f'\n⏰ {self.late_text(lang)}'
 
         return out_str
 
 
-    def _get_embed_body(self, title, author=None, tz_str='UTC'):
+    def _get_embed_body(self, title, author=None, tz_str='UTC', lang=None):
         # Discord refuses embeds with a longer description
         eb = discord.Embed(title=title, description=lib.text.shorten(f'{self.msg}', lib.text.MAX_DESCRIPTION), color=0xe4ff1e)
 
@@ -222,19 +229,19 @@ class Reminder:
             # Discord shows the embed timestamp in each viewer's local time
             # (a naive value would be read in the machine timezone)
             eb.timestamp = self.created_at.replace(tzinfo=tz.UTC)
-            eb.set_footer(text='created: ')
+            eb.set_footer(text=tr(lang or self.lang, 'created: '))
 
         if author:
             avatar_url = author.avatar.url if author.avatar else author.default_avatar.url
             eb.set_author(name=author.display_name, icon_url=avatar_url)
         elif self.target != self.author:
             # fallback if author couldn't be determined
-            eb.add_field(name='by', value=f'<@!{self.author}>', inline=False)
+            eb.add_field(name=tr(lang or self.lang, 'by'), value=f'<@!{self.author}>', inline=False)
 
         return eb
     
 
-    def get_tiny_embed(self, title='New Reminder Created', now=None, info:str=None, rrule_override=None):
+    def get_tiny_embed(self, title=None, now=None, info:str=None, rrule_override=None, lang=None):
         """return a tiny info embed of the reminder
            used upon reminder creation, to not bloat main chat
            Show interval till next/first trigger
@@ -245,21 +252,20 @@ class Reminder:
             [type]: [description]
         """
 
+        lang = lang or self.lang
+        title = title or tr(lang, 'New Reminder Created')
         if not now:
             now = timeutil.utcnow()
-        
-        if self.target == self.author:
-            description = 'Reminding you '
-        else:
-            tgt_str = self.target_name or f'<@!{self.target}>'
-            description = f'Reminding {tgt_str} '
- 
-        
+
         at_utc = self.at.replace(tzinfo=tz.UTC)
-        description += f'<t:{int(at_utc.timestamp())}:R>'
-        
+        when = f'<t:{int(at_utc.timestamp())}:R>'
+        if self.target == self.author:
+            description = tr(lang, 'Reminding you {when}', when=when)
+        else:
+            description = tr(lang, 'Reminding {target} {when}', target=self.target_name or f'<@!{self.target}>', when=when)
+
         if info:
-            description += f'\n```Parsing hints:\n{info}```' 
+            description += f'\n```{tr(lang, "Parsing hints")}:\n{hints(lang, info)}```'
     
         eb = discord.Embed(title=title, description=description, color=0x409fe2)
         eb.timestamp = at_utc
@@ -272,12 +278,12 @@ class Reminder:
         return bool(re.fullmatch(r'<@!?\d+>', self.target_mention or f'<@{self.target}>'))
 
 
-    def late_text(self) -> str:
+    def late_text(self, lang=None) -> str:
         """why it comes late, '' when it is on time"""
         if not self.late_due_at:
             return ''
         ts = int(utc_timestamp(self.late_due_at))
-        return f'Due <t:{ts}:f> (<t:{ts}:R>): the bot couldn\'t send it on time.'
+        return tr(lang or self.lang, 'Due <t:{ts}:f> (<t:{ts}:R>): the bot couldn\'t send it on time.', ts=ts)
 
 
     def mentioned_ids(self) -> set:
@@ -285,7 +291,7 @@ class Reminder:
         return {int(uid) for uid in re.findall(r'<@!?(\d+)>', f'{self.title or ""} {self.msg or ""}')}
 
 
-    def get_info_embed(self, tz_str='UTC', title='Reminder Info'):
+    def get_info_embed(self, tz_str='UTC', title=None, lang=None):
         """return info embed of this reminders
            used for reminder management.
            Shows due-date, instead of link to channel
@@ -294,26 +300,27 @@ class Reminder:
             [type]: [description]
         """
 
-        eb = self._get_embed_body(title, tz_str=tz_str)
+        lang = lang or self.lang
+        eb = self._get_embed_body(title or tr(lang, 'Reminder Info'), tz_str=tz_str, lang=lang)
         eb.color = 0x409fe2
 
 
         if self.author != self.target:
-            eb.add_field(name='Target user/role', value=self.target_name or f'<@!{self.target}>')
+            eb.add_field(name=tr(lang, 'Target user/role'), value=self.target_name or f'<@!{self.target}>')
 
         if self.at:
             at_utc = self.at.replace(tzinfo=tz.UTC)
             at_ts = int(at_utc.timestamp())
             at_str = f'<t:{at_ts}> <t:{at_ts}:R>'
         else:
-            at_str = '`No future occurrences`'
+            at_str = f'`{tr(lang, "No future occurrences")}`'
 
-        eb.add_field(name='Due date', value=at_str, inline=False)
+        eb.add_field(name=tr(lang, 'Due date'), value=at_str, inline=False)
 
         return eb
 
 
-    async def get_embed(self, client, is_dm=False, tz_str='UTC'):
+    async def get_embed(self, client, is_dm=False, tz_str='UTC', lang=None):
         """return embed of this reminders
            will resolve user mentions.
            Used for elapsed reminders
@@ -325,37 +332,38 @@ class Reminder:
         Returns:
             discord.Embed: embed of reminder
         """
+        lang = lang or self.lang
 
         if self.target != self.author:
             try:
                 author = await client.fetch_user(self.author)
-                title = 'Reminds you'
+                title = tr(lang, 'Reminds you')
             except discord.errors.NotFound:
                 author = None
-                title = f'Reminder'
+                title = tr(lang, 'Reminder')
         else:
             author = None
-            title = f'Reminder'
+            title = tr(lang, 'Reminder')
         if self.title:
             # its own title (the author shows above it)
             title = lib.text.shorten(self.title, 256)
 
-        eb = self._get_embed_body(title, author=author, tz_str=tz_str)
+        eb = self._get_embed_body(title, author=author, tz_str=tz_str, lang=lang)
 
         if self.g_id and self.last_msg_id:
             url = f'https://discord.com/channels/{self.g_id}/{self.ch_id}/{self.last_msg_id}'
-            eb.add_field(name='\u200B', value=f'[jump to the chat]({url})', inline=False)
+            eb.add_field(name='\u200B', value=f'[{tr(lang, "jump to the chat")}]({url})', inline=False)
         elif self.last_msg_id:
             # private dm
             url = f'https://discord.com/channels/@me/9/{self.last_msg_id}'
-            eb.add_field(name='\u200B', value=f'[jump to the chat]({url})', inline=False)
+            eb.add_field(name='\u200B', value=f'[{tr(lang, "jump to the chat")}]({url})', inline=False)
 
         if self.late_due_at:
-            eb.add_field(name='⏰ Sent late', value=self.late_text(), inline=False)
+            eb.add_field(name=tr(lang, '⏰ Sent late'), value=self.late_text(lang), inline=False)
 
         if self.img_url:
             eb.set_image(url=self.img_url)
-            eb.set_footer(text='*Images are provided by the author*, created: ')
+            eb.set_footer(text=tr(lang, '*Images are provided by the author*, created: '))
 
         return eb
 
@@ -425,7 +433,7 @@ class IntervalReminder(Reminder):
         return [self.at] + list(itertools.islice(self._occurrences(self.at, tz_str), max(count - 1, 0)))
 
 
-    def add_upcoming_field(self, eb: discord.Embed, tz_str=None):
+    def add_upcoming_field(self, eb: discord.Embed, tz_str=None, lang=None):
         """add the next occurrences to the embed, to check the rules at a glance
 
         Args:
@@ -436,10 +444,11 @@ class IntervalReminder(Reminder):
             return
         lines = [f'<t:{int(utc_timestamp(d))}:F>' for d in dates]
         name = 'Next occurrences (paused, not delivered)' if self.paused else 'Next occurrences'
+        name = tr(lang or self.lang, name)
         eb.add_field(name=name, value='\n'.join(lines), inline=False)
 
 
-    def get_tiny_embed(self, title='New Interval Created', now=None, info:str=None, rrule_override=None):
+    def get_tiny_embed(self, title=None, now=None, info:str=None, rrule_override=None, lang=None):
         """return a tiny info embed of the reminder
            used upon reminder creation, to not bloat main chat
            Show interval till next/first trigger
@@ -448,23 +457,24 @@ class IntervalReminder(Reminder):
             [type]: [description]
         """
 
+        lang = lang or self.lang
+        title = title or tr(lang, 'New Interval Created')
         if not now:
             now = timeutil.utcnow()
-        
-        if self.target == self.author:
-            description = 'Reminding you '
-        else:
-            tgt_str = self.target_name or f'<@!{self.target}>'
-            description = f'Reminding {tgt_str} '
 
-        description += f'the first time {self.get_interval_string(now, use_timestamp=True)}'
-        description += '\n\nCall `/reminder_list` to edit all pending reminders'
-        
+        when = self.get_interval_string(now, use_timestamp=True, lang=lang)
+        if self.target == self.author:
+            description = tr(lang, 'Reminding you the first time {when}', when=when)
+        else:
+            description = tr(lang, 'Reminding {target} the first time {when}',
+                             target=self.target_name or f'<@!{self.target}>', when=when)
+        description += tr(lang, '\n\nCall `/reminder_list` to edit all pending reminders')
+
         if info:
-            description += f'\n```Parsing hints:\n{info}```' 
-    
+            description += f'\n```{tr(lang, "Parsing hints")}:\n{hints(lang, info)}```'
+
         eb = discord.Embed(title=title, description=description, color=0x409fe2)
-        self.add_upcoming_field(eb)
+        self.add_upcoming_field(eb, lang=lang)
         
         
         if rrule_override:
@@ -485,7 +495,7 @@ class IntervalReminder(Reminder):
         return eb
 
 
-    def get_info_embed(self, tz_str='UTC', title='Interval Info'):
+    def get_info_embed(self, tz_str='UTC', title=None, lang=None):
         """return info embed of this reminders
            used for reminder management.
            Shows due-date, instead of link to channel
@@ -493,22 +503,24 @@ class IntervalReminder(Reminder):
         Returns:
             [type]: [description]
         """
-        eb = super().get_info_embed(tz_str=tz_str, title=title)
+        lang = lang or self.lang
+        eb = super().get_info_embed(tz_str=tz_str, title=title or tr(lang, 'Interval Info'), lang=lang)
         eb.timestamp = None
         # the rules are in the timezone of the server, whatever the display timezone
-        self.add_upcoming_field(eb)
+        self.add_upcoming_field(eb, lang=lang)
 
-        in_str = self.get_interval_string()
+        in_str = self.get_interval_string(lang=lang)
         prefix = 'Next in ' if self.at else ''
         if self.paused:
             prefix = 'Paused, next in ' if self.at else 'Paused, '
+        prefix = tr(lang, prefix) if prefix else ''
         
         eb.set_footer(text=f'{prefix}{in_str}', icon_url=REPEAT_ICON_URL)
 
         return eb
 
 
-    async def get_embed(self, client, is_dm=False, tz_str='UTC'):
+    async def get_embed(self, client, is_dm=False, tz_str='UTC', lang=None):
         """return embed of this reminders
            will resolve user mentions.
            Used for elapsed reminders
@@ -521,16 +533,17 @@ class IntervalReminder(Reminder):
             discord.Embed: embed of reminder
         """
         
-        eb = await super().get_embed(client, is_dm, tz_str)
+        lang = lang or self.lang
+        eb = await super().get_embed(client, is_dm, tz_str, lang=lang)
 
         
         if self.img_url:
-            disclaimer = '*Images are provided by the author*'
+            disclaimer = tr(lang, '*Images are provided by the author*')
         else:
             disclaimer = ''
 
-        in_str = self.get_interval_string()
-        prefix = 'Next in ' if self.at else ''
+        in_str = self.get_interval_string(lang=lang)
+        prefix = tr(lang, 'Next in ') if self.at else ''
         postfix = f', {disclaimer}' if disclaimer else ''
         
         eb.set_footer(text=f'{prefix}{in_str}{postfix}', icon_url=REPEAT_ICON_URL)

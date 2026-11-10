@@ -198,6 +198,7 @@ class FakeInteraction:
         self.guild_id = None
         self._state = SimpleNamespace(_modal_store=world.modal_store)
         self.client = world.client
+        self.locale = world.locale  # the language of the user's Discord
         self.created = asyncio.get_running_loop().time()
 
     def age(self) -> float:
@@ -244,6 +245,7 @@ class FakeDiscord:
         self.client = FakeClient(self)
         self.dms = []             # DMs the bot sent
         self.closed_dms = set()   # users who don't accept DMs
+        self.locale = 'en-US'     # the language of the users' Discord
 
     def new_message(self, ephemeral=True) -> ChatMessage:
         msg = ChatMessage(self, ephemeral)

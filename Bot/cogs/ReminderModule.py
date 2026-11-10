@@ -12,6 +12,7 @@ from discord.ext import commands, tasks
 from lib.Connector import Connector
 from lib.Reminder import Reminder, IntervalReminder, utc_timestamp
 import lib.text
+from lib.i18n import tr
 
 import util.reminderButtons
 from util.verboseErrors import VerboseErrors
@@ -113,17 +114,19 @@ class ReminderModule(commands.Cog):
         
         guild = self.client.get_guild(rem.g_id) if rem.g_id else None
         dm =  await author.create_dm()
-        eb = rem.get_info_embed()
+        lang = rem.lang
+        eb = rem.get_info_embed(lang=lang)
 
-        guild_name = guild.name if guild else '*Unresolved Guild*'
-        channel_name = channel.name if channel else '*Unresolved Channel*'
-        
-        help_text = 'Couldn\'t send the reminder into the requested channel\n\n'\
-                   f'• Make sure I have permission to send messages into the channel `{channel_name}` on `{guild_name}`\n'\
-                    '• or make sure the receiver allows to receive DMs from me\n'\
-                    '• or edit the Reminder to be send into an existing channel'
-        
-        eb_warn = discord.Embed(title='Failed to deliver Reminder',
+        guild_name = guild.name if guild else f'*{tr(lang, "Unresolved Guild")}*'
+        channel_name = channel.name if channel else f'*{tr(lang, "Unresolved Channel")}*'
+
+        help_text = tr(lang, 'Couldn\'t send the reminder into the requested channel\n\n'
+                             '• Make sure I have permission to send messages into the channel `{channel}` on `{guild}`\n'
+                             '• or make sure the receiver allows to receive DMs from me\n'
+                             '• or edit the Reminder to be send into an existing channel',
+                       channel=channel_name, guild=guild_name)
+
+        eb_warn = discord.Embed(title=tr(lang, 'Failed to deliver Reminder'),
                                 description=f'{help_text}',
                                 color=Consts.col_crit)
 
@@ -284,7 +287,7 @@ class ReminderModule(commands.Cog):
                     # get the reminder string
                     # ignoring the user preferences
                     fallback = await rem.get_string(client=self.client)
-                    fallback += '\n||This reminder can be more beautiful with `Embed Links` permissions||'
+                    fallback += tr(rem.lang, '\n||This reminder can be more beautiful with `Embed Links` permissions||')
                     await send_long(channel, fallback, allowed_mentions=mentions)
                     return True
                 except discord.errors.Forbidden:
@@ -306,13 +309,14 @@ class ReminderModule(commands.Cog):
 
 
         # no need to resolve author, target is sufficient
-        guild_name = guild.name if guild else 'Unresolved Guild'
+        guild_name = guild.name if guild else tr(rem.lang, 'Unresolved Guild')
+        unusable = '`You are receiving this DM, as the channel \'{channel}\' on \'{guild}\' of this reminder can\'t be used (anymore).`'
         if not channel:
-            err = f'`You are receiving this dm, as the desired channel on \'{guild_name}\' is not accesible (anymore).`'
+            err = tr(rem.lang, unusable, channel=rem.ch_name or '?', guild=guild_name)
         elif isinstance(channel, discord.CategoryChannel):
             # cannot use category channels
             log.debug('tried to send reminder for category channel')
-            err = f'`You are receivin this dm, as the desired channel \'{channel.name}\' on \'{guild_name}\' is not a Text- or Voice- channel`'
+            err = tr(rem.lang, unusable, channel=channel.name, guild=guild_name)
         else:
             err = None
         
@@ -345,12 +349,9 @@ class ReminderModule(commands.Cog):
         
 
         if not success:
-            if isinstance(channel, discord.Thread) and channel.locked:
-                err = f'`You are receiving this dm, as I the original thread \'{channel.name}\' on \'{guild.name}\' of this reminder was locked by a moderator.`'
-            elif isinstance(channel, discord.Thread):
-                err = f'`You are receiving this dm, as I do not have permission to send messages into the thread \'{channel.name}\' on \'{guild.name}\'.`'
-            else:
-                err = f'`You are receiving this dm, as I do not have permission to send messages into the channel \'{channel.name}\' on \'{guild.name}\'.`'
+            # a locked thread, or no permission to post there
+            err = tr(rem.lang, '`You are receiving this DM, as I can\'t post in \'{channel}\' on \'{guild}\'.`',
+                     channel=channel.name, guild=guild.name)
 
             await self.print_reminder_dm(rem, channel=channel, err_msg=err)
 
@@ -432,7 +433,7 @@ class ReminderModule(commands.Cog):
 
             if interval.at is None:
                 # last delivery, with a warning (orphans are deleted within a day)
-                interval.msg += INTERVAL_BROKEN_WARNING
+                interval.msg += tr(interval.lang, INTERVAL_BROKEN_WARNING)
             Connector.update_interval_at(interval)
 
         failures = 0  # in a row

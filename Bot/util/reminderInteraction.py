@@ -8,6 +8,7 @@ import logging
 
 import util.interaction
 import util.notices
+from lib.i18n import lang_of, tr
 from util.consts import Consts
 import util.verboseErrors
 import lib.input_parser
@@ -29,6 +30,8 @@ class STM():
         self.mode:str = 'mine'
         # names of the members the list shows, by id (cogs.ReminderListing.resolve_names)
         self.names:dict[int, str] = {}
+        # the language of the user's Discord ('en', 'fr')
+        self.lang:str = lang_of(ctx)
 
 
 class ReminderChannelEdit(util.interaction.CustomView):

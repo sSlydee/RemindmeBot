@@ -418,6 +418,7 @@ class ReminderListing(commands.Cog):
     # =====================
 
     @commands.slash_command(name='reminder_list', description='List, edit and delete your reminders, and the ones for you',
+                            description_localizations={'fr': 'Lister, modifier et supprimer tes rappels, et ceux pour toi'},
                             **lib.permissions.EVERYWHERE)
     async def reminder_list(self, ctx):
         # answer Discord before reading the database

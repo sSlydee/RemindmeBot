@@ -2,6 +2,8 @@ import asyncio
 
 import discord
 
+import lib.i18n
+
 import logging
 
 log = logging.getLogger('Remindme')
@@ -57,7 +59,7 @@ async def edit_menu(target, **kwargs):
 async def report_error(error: Exception, interaction: discord.Interaction, where: str):
     """log an error of a button or popup (with its traceback) and tell the user"""
     log.error(f'error in {where}', exc_info=error)
-    text = 'Something went wrong, sorry. The error was logged.'
+    text = lib.i18n.tr(lib.i18n.lang_of(interaction), 'Something went wrong, sorry. The error was logged.')
     try:
         if interaction.response.is_done():
             await interaction.followup.send(text, ephemeral=True)

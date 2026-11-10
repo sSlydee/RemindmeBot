@@ -572,7 +572,8 @@ class Help(discord.Cog):
     # =====================
     # command functions
     # =====================
-    @discord.slash_command(name='help', description='Show the help page for this bot')
+    @discord.slash_command(name='help', description='Show the help page for this bot',
+                           description_localizations={'fr': 'Afficher l’aide du bot'})
     async def help(self, ctx: discord.ApplicationContext):
         await self.send_help_page(ctx, page=Help.default_page_name)
 

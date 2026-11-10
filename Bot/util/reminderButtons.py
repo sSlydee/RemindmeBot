@@ -24,6 +24,7 @@ import lib.ReminderRepeater
 import lib.timeutil as timeutil
 from lib.Connector import Connector
 from lib.Reminder import Reminder, IntervalReminder
+from lib.i18n import lang_of, tr
 import util.interaction
 import util.notices
 from util.reminderInteraction import ReportErrors
@@ -70,12 +71,12 @@ def delivered_view(rem: Reminder, snoozed: str = None, deleted=False) -> discord
     view = discord.ui.View(timeout=None, store=False)
     for action, (label, _) in SNOOZES.items():
         view.add_item(discord.ui.Button(
-            label=label, emoji='⏱️' if action != 'other' else None, row=0,
+            label=tr(rem.lang, label), emoji='⏱️' if action != 'other' else None, row=0,
             custom_id=custom_id(action, rem),
             style=discord.ButtonStyle.green if action == snoozed else discord.ButtonStyle.blurple,
             disabled=bool(snoozed) or deleted))
     if isinstance(rem, IntervalReminder):
-        view.add_item(discord.ui.Button(label='Skip next', emoji='⏭️', row=1, disabled=deleted,
+        view.add_item(discord.ui.Button(label=tr(rem.lang, 'Skip next'), emoji='⏭️', row=1, disabled=deleted,
                                         style=discord.ButtonStyle.secondary, custom_id=custom_id('skip', rem)))
         view.add_item(discord.ui.Button(emoji='🗑️', row=1, disabled=deleted,
                                         style=discord.ButtonStyle.danger, custom_id=custom_id('del', rem)))
@@ -115,7 +116,7 @@ async def handle_click(interaction: discord.Interaction) -> bool:
     try:
         rem = _load(kind, rem_id)
         if rem is None:
-            await interaction.response.send_message(GONE, ephemeral=True)
+            await interaction.response.send_message(tr(lang_of(interaction), GONE), ephemeral=True)
         elif action in SNOOZES:
             await _snooze_clicked(interaction, rem, action)
         elif action == 'skip' and isinstance(rem, IntervalReminder):
@@ -123,7 +124,7 @@ async def handle_click(interaction: discord.Interaction) -> bool:
         elif action == 'del' and isinstance(rem, IntervalReminder):
             await _delete(interaction, rem)
         else:
-            await interaction.response.send_message('Unknown button.', ephemeral=True)
+            await interaction.response.send_message(tr(lang_of(interaction), 'Unknown button.'), ephemeral=True)
     except Exception as e:
         await util.interaction.report_error(e, interaction, f'reminder button {action}')
     return True
@@ -131,7 +132,8 @@ async def handle_click(interaction: discord.Interaction) -> bool:
 
 async def _snooze_clicked(interaction: discord.Interaction, rem: Reminder, action: str):
     if action == 'other':
-        await util.interaction.open_popup(interaction, SnoozeModal(rem, title='Snooze the reminder'))
+        lang = lang_of(interaction)
+        await util.interaction.open_popup(interaction, SnoozeModal(rem, lang, title=tr(lang, 'Snooze the reminder')))
         return
     if action == 'tmr':
         at = _tomorrow_9(_snooze_tz(rem, interaction.user.id))
@@ -150,6 +152,7 @@ async def snooze(interaction: discord.Interaction, rem: Reminder, at, action: st
         snoozed.msg += ' (snoozed)'
     snoozed.at = at
     when = f'<t:{int(timeutil.utc_timestamp(at))}:F>'
+    lang = lang_of(interaction)
 
     if interaction.user.id != rem.author:
         # someone else: their own reminder, by DM
@@ -160,10 +163,11 @@ async def snooze(interaction: discord.Interaction, rem: Reminder, at, action: st
         snoozed.target = interaction.user.id
         snoozed.target_name = interaction.user.mention
         snoozed.target_mention = interaction.user.mention
+        snoozed.lang = lang
         Connector.add_reminder(snoozed)
         await interaction.response.send_message(
-            f'Snoozed until {when}. It will be delivered to your DMs, as you are not the author: '
-            'make sure I\'m allowed to message you.', ephemeral=True)
+            tr(lang, 'Snoozed until {when}. It will be delivered to your DMs, as you are not the author: '
+                     'make sure I\'m allowed to message you.', when=when), ephemeral=True)
         return
 
     note = ''
@@ -172,57 +176,63 @@ async def snooze(interaction: discord.Interaction, rem: Reminder, at, action: st
         snoozed.target = interaction.user.id
         snoozed.target_name = interaction.user.mention
         snoozed.target_mention = interaction.user.mention
-        note = ' It will remind only you, not the whole role.'
+        note = tr(lang, ' It will remind only you, not the whole role.')
 
     Connector.add_reminder(snoozed)
     await interaction.response.edit_message(view=delivered_view(rem, snoozed=action))
-    await interaction.followup.send(f'Snoozed until {when}.{note}', ephemeral=True)
+    await interaction.followup.send(tr(lang, 'Snoozed until {when}.', when=when) + note, ephemeral=True)
 
 
 async def _skip(interaction: discord.Interaction, interval: IntervalReminder):
+    lang = lang_of(interaction)
     if interaction.user.id != interval.author:
-        await interaction.response.send_message('Only the author of this reminder can change it.', ephemeral=True)
+        await interaction.response.send_message(tr(lang, 'Only the author of this reminder can change it.'), ephemeral=True)
         return
     try:
         skipped, interval = lib.ReminderRepeater.skip_next(interval)
     except lib.ReminderRepeater.ReminderChanged:
-        await interaction.response.send_message(GONE, ephemeral=True)
+        await interaction.response.send_message(tr(lang_of(interaction), GONE), ephemeral=True)
         return
     if skipped is None:
-        await interaction.response.send_message('This reminder has no next date.', ephemeral=True)
+        await interaction.response.send_message(tr(lang, 'This reminder has no next date.'), ephemeral=True)
         return
-    nxt = f'<t:{int(timeutil.utc_timestamp(interval.at))}:F>' if interval.at else 'none'
+    nxt = f'<t:{int(timeutil.utc_timestamp(interval.at))}:F>' if interval.at else tr(lang, 'none')
     await interaction.response.send_message(
-        f'Skipped <t:{int(timeutil.utc_timestamp(skipped))}:F>. Next one: {nxt}.\n'
-        'To undo, delete the exclusion date in `/reminder_list` > Edit Interval.', ephemeral=True)
+        tr(lang, 'Skipped {skipped}. Next one: {next}.\n'
+                 'To undo, delete the exclusion date in `/reminder_list` > Edit Interval.',
+           skipped=f'<t:{int(timeutil.utc_timestamp(skipped))}:F>', next=nxt), ephemeral=True)
 
 
 async def _delete(interaction: discord.Interaction, interval: IntervalReminder):
     user = interaction.user
     if not lib.permissions.can_delete_reminder(interval, user):
         await interaction.response.send_message(
-            'Only the author of this reminder, the members it is for or mentions, or a moderator can delete it.',
+            tr(lang_of(interaction), 'Only the author of this reminder, the members it is for or mentions, '
+                                     'or a moderator can delete it.'),
             ephemeral=True)
         return
     Connector.delete_interval(interval._id)
     if user.id == interval.author:
-        by = 'its author'
+        by = tr(interval.lang, 'its author')
     else:
         by = user.mention
         log.info(f'reminder {interval._id} of {interval.author} deleted by {user.id}')
     await interaction.response.edit_message(
-        embed=discord.Embed(title='Deleted Reminder', description=f'The reminder was deleted by {by}', color=0x409fe2),
+        embed=discord.Embed(title=tr(interval.lang, 'Deleted Reminder'),
+                            description=tr(interval.lang, 'The reminder was deleted by {by}', by=by), color=0x409fe2),
         view=delivered_view(interval, deleted=True))
     await util.notices.tell_author_deleted(interaction.client, interval, user)
 
 
 class SnoozeModal(ReportErrors, discord.ui.Modal):
     """'Other…': snooze until a time typed like in /remindme"""
-    def __init__(self, rem: Reminder, *args, **kwargs):
+    def __init__(self, rem: Reminder, lang='en', *args, **kwargs):
         kwargs.setdefault('timeout', util.interaction.POPUP_TIMEOUT)
         super().__init__(*args, **kwargs)
         self.rem = rem
-        self.add_item(discord.ui.InputText(label='Snooze until', placeholder='in 2h, tomorrow 18:00, friday 9:00',
+        self.lang = lang
+        self.add_item(discord.ui.InputText(label=tr(lang, 'Snooze until'),
+                                           placeholder=tr(lang, 'in 2h, tomorrow 18:00, friday 9:00'),
                                            style=discord.InputTextStyle.singleline, max_length=100))
 
     async def callback(self, interaction: discord.Interaction):
@@ -230,9 +240,9 @@ class SnoozeModal(ReportErrors, discord.ui.Modal):
         utcnow = timeutil.utcnow()
         at, info = lib.input_parser.parse(text, utcnow, _snooze_tz(self.rem, interaction.user.id))
         if isinstance(at, str):
-            error = 'That is a repetition, a snooze needs one date.'
+            error = tr(self.lang, 'That is a repetition, a snooze needs one date.')
         elif not at or at <= utcnow:
-            error = f'Couldn\'t read a date in the future from `{text[:100]}`.'
+            error = tr(self.lang, 'Couldn\'t read a date in the future from `{text}`.', text=text[:100])
         else:
             error = None
         if error:

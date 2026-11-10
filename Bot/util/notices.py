@@ -4,6 +4,7 @@ import logging
 import discord
 
 import lib.text
+from lib.i18n import tr
 
 log = logging.getLogger('Remindme.Notices')
 
@@ -19,15 +20,18 @@ async def tell_author_deleted(client, rem, by) -> bool:
     if by.id == rem.author:
         return False
 
+    lang = rem.lang
     name = discord.utils.escape_markdown(lib.text.shorten(rem.title or rem.msg or '', 100))
     guild = client.get_guild(rem.g_id) if rem.g_id else None
-    where = f'#{rem.ch_name}' if rem.ch_name and not rem.by_dm else 'by DM'
-    if guild:
-        where += f' on {discord.utils.escape_markdown(guild.name)}'
+    guild_name = discord.utils.escape_markdown(guild.name) if guild else None
+    if rem.ch_name and not rem.by_dm:
+        where = tr(lang, '#{channel} on {guild}', channel=rem.ch_name, guild=guild_name) if guild else f'#{rem.ch_name}'
+    else:
+        where = tr(lang, 'by DM')
     by_name = getattr(by, 'display_name', None)
     who = f'{by.mention} ({discord.utils.escape_markdown(by_name)})' if isinstance(by_name, str) else by.mention
-    eb = discord.Embed(title='Your reminder was deleted',
-                       description=f'**{name}** ({where})\nDeleted by {who}.',
+    eb = discord.Embed(title=tr(lang, 'Your reminder was deleted'),
+                       description=tr(lang, '**{name}** ({where})\nDeleted by {who}.', name=name, where=where, who=who),
                        color=0x409fe2)
     try:
         author = client.get_user(rem.author) or await client.fetch_user(rem.author)

@@ -167,12 +167,14 @@ class TimezoneModule(discord.Cog):
     ##################
     
     @commands.slash_command(name='timezone', description='Set the timezone of this server (your own one in DMs)',
+                            description_localizations={'fr': 'Régler le fuseau horaire du serveur (le tien en MP)'},
                             **lib.permissions.EVERYWHERE)
     async def set_timezone_sub_cmd(self, 
                                     ctx: discord.ApplicationContext, 
                                     new_timezone: discord.Option(
                                         str,
                                         "the new timezone, e.g. Europe/Paris",
+                                        description_localizations={'fr': 'le nouveau fuseau, ex. Europe/Paris'},
                                         autocomplete=get_timezone_autocomplete
                                     )):
 

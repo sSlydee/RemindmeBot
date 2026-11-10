@@ -14,6 +14,7 @@ from lib.Connector import Connector
 import lib.timeutil as timeutil
 from util.consts import Consts
 import util.privacy
+from lib.i18n import lang_of, tr
 
 
 # Logging
@@ -146,12 +147,13 @@ async def on_application_command_error(ctx: discord.ApplicationContext, error: E
     await log_exception(ctx, error, error_id=err_id)
 
     def get_err_embed(error_id):
-        eb = discord.Embed(title='Something went wrong',
-                            description='The bot couldn\'t finish this command. The error was logged with the code '\
-                                        'below: if it keeps happening, give it to a moderator or to the owner of the bot.')
+        lang = lang_of(ctx)
+        eb = discord.Embed(title=tr(lang, 'Something went wrong'),
+                            description=tr(lang, 'The bot couldn\'t finish this command. The error was logged with the code '
+                                                 'below: if it keeps happening, give it to a moderator or to the owner of the bot.'))
         eb.color = 0xff0000  # red
 
-        eb.add_field(name='Error Code', value=str(error_id))
+        eb.add_field(name=tr(lang, 'Error Code'), value=str(error_id))
         return eb
 
     # not all commands are equally report-worthy

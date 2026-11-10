@@ -208,6 +208,15 @@ days, and nothing is sent meanwhile. Added back within that time, it picks up
 where it was (the reminders missed in between are sent, marked *⏰ Sent late*);
 after that, they are deleted.
 
+### Language
+
+Members whose Discord is in French get the bot in French: the command
+descriptions, the time preview while typing (`demain 9h → mer. 11 nov.
+09:00`), the replies, and the reminders they create when delivered, with
+their buttons (a reminder is sent in the language of its author). The menus
+of `/reminder_list`, `/settings` and `/help` are still in English for now.
+Everyone else gets English.
+
 ### Privacy
 
 `/help` → **Privacy** tells members what the bot stores (the reminders, who

@@ -239,7 +239,8 @@ class SettingsModule(commands.Cog):
     ##################
 
 
-    @commands.slash_command(name='settings', description='Show and change the settings of this server (yours in DMs)')
+    @commands.slash_command(name='settings', description='Show and change the settings of this server (yours in DMs)',
+                            description_localizations={'fr': 'Voir et changer les réglages du serveur (les tiens en MP)'})
     async def settings_menu_cmd(self, ctx):
         # answer Discord before reading the database
         await ctx.defer(ephemeral=True)
