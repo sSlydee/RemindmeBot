@@ -52,6 +52,10 @@ class Reminder:
         self.target_mention = json.get('target_mention', None)
         self.target_name = json.get('target_name', None)
         self.ch_name = json.get('ch_name', None)
+        # a server reminder sent to its member by DM (its channel stays the fallback)
+        self.by_dm = json.get('by_dm', False)
+        # the date it was due, when it is sent late (not stored)
+        self.late_due_at = None
 
         author = json.get('author', None)
         self.author = int(author) if author else None
@@ -103,6 +107,7 @@ class Reminder:
         d['target_mention'] = self.target_mention
         d['target_name'] = self.target_name
         d['ch_name'] = self.ch_name
+        d['by_dm'] = self.by_dm
         d['author'] = str(self.author) if self.author else None
         d['last_msg_id'] = str(self.last_msg_id) if self.last_msg_id else None
         
@@ -203,6 +208,8 @@ class Reminder:
 
             if self.img_url:
                 out_str += f'\n{self.img_url}'
+            if self.late_due_at:
+                out_str += f'\n⏰ {self.late_text()}'
 
         return out_str
 
@@ -258,6 +265,19 @@ class Reminder:
         eb.timestamp = at_utc
 
         return eb
+
+
+    def is_for_a_member(self) -> bool:
+        """for one member (it can go by DM), not a role or @everyone"""
+        return bool(re.fullmatch(r'<@!?\d+>', self.target_mention or f'<@{self.target}>'))
+
+
+    def late_text(self) -> str:
+        """why it comes late, '' when it is on time"""
+        if not self.late_due_at:
+            return ''
+        ts = int(utc_timestamp(self.late_due_at))
+        return f'Due <t:{ts}:f> (<t:{ts}:R>): the bot couldn\'t send it on time.'
 
 
     def mentioned_ids(self) -> set:
@@ -326,6 +346,9 @@ class Reminder:
             # private dm
             url = f'https://discord.com/channels/@me/9/{self.last_msg_id}'
             eb.add_field(name='\u200B', value=f'[jump to the chat]({url})', inline=False)
+
+        if self.late_due_at:
+            eb.add_field(name='⏰ Sent late', value=self.late_text(), inline=False)
 
         if self.img_url:
             eb.set_image(url=self.img_url)

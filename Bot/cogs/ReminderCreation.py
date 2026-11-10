@@ -362,6 +362,10 @@ class ReminderCreation(commands.Cog):
             else:
                 rem.target_mention = target.mention
 
+        if not personal and rem.is_for_a_member() and Connector.get_dm_delivery(ctx.guild.id):
+            # the server sends the reminders of its members by DM
+            rem.by_dm = True
+
         if rrule:
             old_rem = rem
             old_rem.at = dtstart

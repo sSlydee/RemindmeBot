@@ -32,6 +32,12 @@ class SettingsView(util.interaction.CustomView):
         rem_type = Connector.get_reminder_type(self.scope.instance_id)
         del_type = Connector.get_auto_delete(self.scope.instance_id)
 
+        by_dm = Connector.get_dm_delivery(self.scope.instance_id)
+        self.deliver_dm.style = discord.ButtonStyle.success if by_dm else discord.ButtonStyle.secondary
+        self.deliver_dm.disabled = by_dm
+        self.deliver_channel.style = discord.ButtonStyle.secondary if by_dm else discord.ButtonStyle.success
+        self.deliver_channel.disabled = not by_dm
+
         
 
         if rem_type==Connector.ReminderType.HYBRID:
@@ -98,7 +104,9 @@ class SettingsView(util.interaction.CustomView):
         eb = discord.Embed(title='Remindme Settings',
                 description='Server Managers can edit these settings by pressing the '\
                             'corresponding buttons below.\n'\
-                            'The grayed-out buttons are the current selected options.')
+                            'The grayed-out buttons are the current selected options.\n\n'\
+                            '**Members\' reminders**: new reminders for one member are sent in their channel, '\
+                            'or by DM (in the channel if the DM fails). Reminders for a role stay in the channel.')
 
         if self.forbidden:
             eb.color = Consts.col_err
@@ -170,6 +178,22 @@ class SettingsView(util.interaction.CustomView):
     @discord.ui.button(label='Only Show to author', style=discord.ButtonStyle.secondary, row=2)
     async def del_hidden(self, button: discord.ui.Button, interaction: discord.Interaction):
         Connector.set_auto_delete(self.scope.instance_id, Connector.AutoDelete.HIDE)
+        await self.send_update_ui(interaction)
+
+
+    @discord.ui.button(label="Members' reminders", style=discord.ButtonStyle.primary, row=3)
+    async def delivery_label(self, button: discord.ui.Button, interaction: discord.Interaction):
+        # label only: acknowledge, or Discord reports that the bot did not respond
+        await interaction.response.defer()
+
+    @discord.ui.button(label='In the channel', style=discord.ButtonStyle.secondary, row=3)
+    async def deliver_channel(self, button: discord.ui.Button, interaction: discord.Interaction):
+        Connector.set_dm_delivery(self.scope.instance_id, False)
+        await self.send_update_ui(interaction)
+
+    @discord.ui.button(label='By DM', style=discord.ButtonStyle.secondary, row=3)
+    async def deliver_dm(self, button: discord.ui.Button, interaction: discord.Interaction):
+        Connector.set_dm_delivery(self.scope.instance_id, True)
         await self.send_update_ui(interaction)
 
 

@@ -50,6 +50,11 @@ open to everyone.
 The reminder is posted in the channel where you created it, mentioning its
 target. If the bot can't post there anymore, it sends it by DM instead.
 
+A reminder for one member can go to them by DM instead: **Edit Channel →
+Send by DM** in `/reminder_list`, or for all the new ones with `/settings` →
+*Members' reminders: By DM*. If the DM fails (closed DMs), it is posted in its
+channel. Reminders for a role always go to the channel.
+
 ### Writing the time
 
 Times are read in the timezone of the server (yours in DMs).
@@ -77,7 +82,9 @@ Monday at the time you typed it (`next friday` is at 9:00).
 `demain à 18h30`, `vendredi 9h`, `après-demain 10h`, `dans 3 jours`,
 `le 15 janvier à 9h`, `midi`.
 
-Reminders are delivered within a minute of their time.
+Reminders are delivered within a minute of their time. When the bot or
+Discord was down, they are sent once it is back (up to a day later), marked
+*⏰ Sent late* with the time they were due.
 
 ### Repeating reminders
 
@@ -189,6 +196,8 @@ local time when it changes.
   buttons under delivered reminders come with the two embed styles.
 * **Creation reply**: deleted after 5 minutes (the default), never deleted, or
   only shown to its author.
+* **Members' reminders**: new reminders for one member are posted in their
+  channel (the default) or sent by DM.
 
 Changing the server settings needs the **Manage Server** permission.
 
@@ -209,7 +218,7 @@ Changing the server settings needs the **Manage Server** permission.
 | `/remind target time message` | remind another user or a role (Manage Messages by default) |
 | `/reminder_list` | list, edit and delete your reminders (and the ones for you, or the whole server's) |
 | `/timezone timezone` | set the timezone of the server, or your own in DMs |
-| `/settings` | reminder style and creation reply of the server |
+| `/settings` | reminder style, creation reply and DM delivery of the server |
 | `/help` | help pages, with the time syntax |
 
 ## Troubleshooting

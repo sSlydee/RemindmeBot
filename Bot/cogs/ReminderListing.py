@@ -167,7 +167,7 @@ class ReminderListView(util.interaction.CustomView):
             parts.append(local.strftime('%a %d %b %H:%M'))
         else:
             parts.append('no next date')
-        parts.append(f'#{rem.ch_name}' if rem.ch_id and rem.ch_name else 'DM')
+        parts.append(f'#{rem.ch_name}' if rem.ch_id and rem.ch_name and not rem.by_dm else 'DM')
         prefix = '🔁 ' if isinstance(rem, IntervalReminder) else ''
         return (prefix + ' · '.join(parts))[:100]
 
@@ -337,7 +337,7 @@ class ReminderListing(commands.Cog):
             details += [f'<t:{ts}:f>', 'paused' if paused else f'<t:{ts}:R>']
         else:
             details.append('no next date')
-        details.append(f'<#{rem.ch_id}>' if rem.ch_id else 'by DM')
+        details.append(f'<#{rem.ch_id}>' if rem.ch_id and not rem.by_dm else 'by DM')
         if rem.target and rem.target not in (rem.author, author_id):
             details.append(f'for {who(rem.target, rem.target_name or f"<@{rem.target}>")}')
         if author_id and rem.author != author_id:

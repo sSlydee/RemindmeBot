@@ -119,6 +119,17 @@ class Connector:
             return Connector.AutoDelete[rem_json.get('auto_delete', Connector.AutoDelete.TIMEOUT.name)]
         
     @staticmethod
+    def get_dm_delivery(guild_id: int) -> bool:
+        """new reminders for one member of this server go by DM"""
+        settings = Connector.db.settings.find_one({'g_id': str(guild_id)}, {'dm_delivery': 1})
+        return bool(settings and settings.get('dm_delivery', False))
+
+    @staticmethod
+    def set_dm_delivery(guild_id: int, by_dm: bool):
+        Connector.db.settings.find_one_and_update({'g_id': str(guild_id)}, {'$set': {'dm_delivery': bool(by_dm)}},
+                                                  new=False, upsert=True)
+
+    @staticmethod
     def set_reminder_type(instance_id: int, reminder_type: ReminderType):
         
         # keep g_id as key for backwards compatibility
@@ -301,10 +312,15 @@ class Connector:
 
     @staticmethod
     def set_reminder_channel(reminder_id, channel_id: int, channel_name: str = None) -> bool:
-        fields = {'ch_id': str(channel_id)}
+        """deliver into that channel (not by DM anymore)"""
+        fields = {'ch_id': str(channel_id), 'by_dm': False}
         if channel_name:
             fields['ch_name'] = str(channel_name)
         return Connector._set_fields(reminder_id, fields)
+
+    @staticmethod
+    def set_reminder_by_dm(reminder_id, by_dm: bool) -> bool:
+        return Connector._set_fields(reminder_id, {'by_dm': bool(by_dm)})
 
 
     @staticmethod

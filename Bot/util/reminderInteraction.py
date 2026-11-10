@@ -66,10 +66,19 @@ class ReminderChannelEdit(util.interaction.CustomView):
         self.drop_down.callback = self.channel_selected_callback
         self.add_item(self.drop_down)
 
+        # by DM: for one member of a server (a role can't get a DM)
+        self.dm_btn.label = 'Send in the channel' if reminder.by_dm else 'Send by DM'
+        self.dm_btn.disabled = not reminder.g_id or not reminder.is_for_a_member()
+
 
     def get_embed(self) -> discord.Embed:
         eb = self.reminder.get_info_embed(self.stm.tz_str)
         eb.title = 'Select a new channel'
+        if self.reminder.by_dm:
+            where = 'by DM (in its channel if the DM fails)'
+        else:
+            where = f'<#{self.reminder.ch_id}>' if self.reminder.ch_id else 'by DM'
+        eb.add_field(name='Sent', value=where, inline=False)
         return eb
 
 
@@ -136,11 +145,22 @@ class ReminderChannelEdit(util.interaction.CustomView):
             Connector.set_reminder_channel(self.reminder._id, new_ch_id, new_ch.name[0:25])
             self.reminder.ch_id = new_ch_id
             self.reminder.ch_name = new_ch.name[0:25]
+            self.reminder.by_dm = False
             # done: the caller shows the reminder again
             self.stop()
         else:
             # back to the channel picker
             await self.show(embed=self.get_embed(), view=self)
+
+
+    @discord.ui.button(label='Send by DM', style=discord.ButtonStyle.secondary, row=1)
+    async def dm_btn(self, button:  discord.ui.Button, interaction: discord.Interaction):
+        by_dm = not self.reminder.by_dm
+        if not Connector.set_reminder_by_dm(self.reminder._id, by_dm):
+            await self.close(CHANGED_MEANWHILE)
+            return
+        self.reminder.by_dm = by_dm
+        self.stop() # back to the edit menu, which answers this click
 
 
     @discord.ui.button(label='Cancel', style=discord.ButtonStyle.danger, row=1)

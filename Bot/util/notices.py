@@ -21,7 +21,7 @@ async def tell_author_deleted(client, rem, by) -> bool:
 
     name = discord.utils.escape_markdown(lib.text.shorten(rem.title or rem.msg or '', 100))
     guild = client.get_guild(rem.g_id) if rem.g_id else None
-    where = f'#{rem.ch_name}' if rem.ch_name else 'by DM'
+    where = f'#{rem.ch_name}' if rem.ch_name and not rem.by_dm else 'by DM'
     if guild:
         where += f' on {discord.utils.escape_markdown(guild.name)}'
     by_name = getattr(by, 'display_name', None)

@@ -26,6 +26,8 @@ log = logging.getLogger('Remindme.Core')
 TRANSIENT_ERRORS = (discord.DiscordServerError, aiohttp.ClientError, asyncio.TimeoutError, OSError)
 # ... but not forever
 RETRY_FOR = timedelta(days=1)
+# sent later than this after its date: it says so (the loops run about every minute)
+LATE_AFTER = timedelta(minutes=5)
 # after this many failures in a row Discord seems unreachable: the run stops trying
 DOWN_AFTER = 3
 # the monitor is only told that all is well when both delivery loops ran this recently
@@ -134,20 +136,28 @@ class ReminderModule(commands.Cog):
             return
 
 
-    async def print_reminder_dm(self, rem: Reminder, channel=None, err_msg=None):
-        # fallback to dm
+    async def print_reminder_dm(self, rem: Reminder, channel=None, err_msg=None, warn=True) -> bool:
+        """send the reminder to its target by DM
+
+        warn: tell the author when it fails (not when the channel is tried next)
+
+        Returns:
+            bool: True if it was sent
+        """
         # target must be resolved, otherwise dm cannot be created
 
         try:
             target = await self.client.fetch_user(rem.target)
         except discord.errors.NotFound:
             log.warning(f'cannot find user {rem.target} for reminder DM')
-            await self.warn_author_dm(rem, 'target user not found', channel=channel, err_msg=err_msg)
-            return
+            if warn:
+                await self.warn_author_dm(rem, 'target user not found', channel=channel, err_msg=err_msg)
+            return False
 
         if target.bot:
-            await self.warn_author_dm(rem, 'target is a bot', channel=channel, err_msg=err_msg)
-            return
+            if warn:
+                await self.warn_author_dm(rem, 'target is a bot', channel=channel, err_msg=err_msg)
+            return False
 
         # dm if channel not existing anymor
         dm = await target.create_dm()
@@ -180,8 +190,10 @@ class ReminderModule(commands.Cog):
         except discord.errors.Forbidden:
             # embeds can't be forbidden in DMs
             log.warning(f'failed to send reminder as DM to {rem.target}')
-            await self.warn_author_dm(rem, 'cannot DM the target', channel=channel, err_msg=err_msg)
-            return
+            if warn:
+                await self.warn_author_dm(rem, 'cannot DM the target', channel=channel, err_msg=err_msg)
+            return False
+        return True
 
 
     @staticmethod
@@ -227,6 +239,30 @@ class ReminderModule(commands.Cog):
 
 
     async def print_reminder(self, rem: Reminder):
+        """send a due reminder: by DM (private ones, or 'by DM' ones for a member), else in its channel
+
+        Raises:
+            AuthorLeft: the author left its server (it is dropped, not sent)
+        """
+        if not rem.g_id:
+            await self.print_reminder_dm(rem)
+            return
+
+        guild = self.client.get_guild(rem.g_id)
+        # raises AuthorLeft: the reminder is dropped, also its DM fallback
+        author = await self.find_author(guild, rem.author) if guild else None
+
+        if rem.by_dm and rem.is_for_a_member():
+            if await self.print_reminder_dm(rem, warn=False):
+                return
+            # DMs closed: in its channel after all, not lost
+            log.info(f'reminder {rem._id}: cannot DM {rem.target}, sent in its channel')
+
+        await self._print_in_channel(rem, guild, author)
+
+
+    async def _print_in_channel(self, rem: Reminder, guild, author):
+        """send it into its channel, by DM when the channel can't be used"""
 
         async def send_message(guild, channel, text, embed, rem_type: Connector.ReminderType, reminder, mentions):
             if isinstance(channel, discord.Thread) or VerboseErrors.can_embed(channel):
@@ -259,14 +295,6 @@ class ReminderModule(commands.Cog):
             return False
 
     
-        # reminder is a DM reminder
-        if not rem.g_id:
-            await self.print_reminder_dm(rem)
-            return
-
-        guild = self.client.get_guild(rem.g_id)
-        # raises AuthorLeft: the reminder is dropped, also its DM fallback
-        author = await self.find_author(guild, rem.author) if guild else None
         channel = guild.get_channel_or_thread(rem.ch_id) if guild else None
 
         if not channel:
@@ -360,6 +388,7 @@ class ReminderModule(commands.Cog):
             bool: False when Discord couldn't be reached: try again later.
                   True when done, also after an error that a retry won't fix
         """
+        rem.late_due_at = due_at if due_at and now - due_at > LATE_AFTER else None
         try:
             await self.print_reminder(rem)
         except AuthorLeft:
