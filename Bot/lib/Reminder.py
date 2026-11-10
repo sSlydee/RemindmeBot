@@ -1,5 +1,6 @@
 import discord # for reminder
-from datetime import timedelta
+import heapq
+import itertools
 from dateutil import tz
 import dateutil.rrule as rr
 
@@ -16,6 +17,9 @@ import lib.Connector  # KEEP this syntax, circular import
 REPEAT_ICON_URL = 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/1f501.png'
 # how many next dates are shown for a repeating reminder or a new rule
 UPCOMING_COUNT = 5
+# dates looked at past 'now' before giving up: exception rules that remove every
+# date of an endless rule would otherwise make the search run until year 9999
+SEARCH_LIMIT = 10_000
 
 
 log = logging.getLogger('Remindme.Reminder')
@@ -385,21 +389,16 @@ class IntervalReminder(Reminder):
         """the next occurrences (naive UTC), starting with .at"""
         if not self.at:
             return []
-        if not tz_str:
-            instance_id = self.g_id if self.g_id else self.author
-            tz_str = lib.Connector.Connector.get_timezone(instance_id)
-
-        dates = [self.at]
-        while len(dates) < count:
-            nxt = self.next_trigger(dates[-1] + timedelta(seconds=1), tz_str=tz_str)
-            if not nxt:
-                break
-            dates.append(nxt)
-        return dates
+        # one pass: each search replays the rules from their start
+        return [self.at] + list(itertools.islice(self._occurrences(self.at, tz_str), max(count - 1, 0)))
 
 
     def add_upcoming_field(self, eb: discord.Embed, tz_str=None):
-        """add the next occurrences to the embed, to check the rules at a glance"""
+        """add the next occurrences to the embed, to check the rules at a glance
+
+        Args:
+            tz_str: the timezone of the rules, default: the server's (the user's in DMs)
+        """
         dates = self.upcoming(UPCOMING_COUNT, tz_str=tz_str)
         if not dates:
             return
@@ -464,7 +463,8 @@ class IntervalReminder(Reminder):
         """
         eb = super().get_info_embed(tz_str=tz_str, title=title)
         eb.timestamp = None
-        self.add_upcoming_field(eb, tz_str=tz_str)
+        # the rules are in the timezone of the server, whatever the display timezone
+        self.add_upcoming_field(eb)
 
         in_str = self.get_interval_string()
         prefix = 'Next in ' if self.at else ''
@@ -543,7 +543,10 @@ class IntervalReminder(Reminder):
         return ret
 
 
-    def next_trigger(self, utcnow, tz_str=None):
+    def _local_occurrences(self, local_after):
+        """the dates after local_after, in the rule frame (local time), in order
+           and without duplicates; ends after SEARCH_LIMIT candidates
+        """
 
         def valid_rule(rule_str):
             if 'interval=0' in rule_str.lower():
@@ -559,60 +562,53 @@ class IntervalReminder(Reminder):
                 rule = rule.replace(dtstart=timeutil.to_minute(start))
             return rule
 
-        instance_id = self.g_id if self.g_id else self.author
+        # everything to the minute, so that exception dates match the occurrences.
+        # The date of the initial remindme is always included
+        dates = sorted(timeutil.to_minute(d) for d in [self.first_at, *self.rdates] if d)
+        sources = [(d for d in dates if d > local_after)]
+        sources += [to_minute_rule(r).xafter(local_after) for r in self.rrules if valid_rule(r)]
+        excluded = heapq.merge(*(to_minute_rule(r).xafter(local_after) for r in self.exrules if valid_rule(r)))
+        exdates = {timeutil.to_minute(d) for d in self.exdates}
 
-        # everything to the minute, so that exception dates match the occurrences
-        ruleset = rr.rruleset()
+        try:
+            next_excluded = next(excluded, None)
+            last = None
+            for checked, date in enumerate(heapq.merge(*sources)):
+                if checked >= SEARCH_LIMIT:
+                    log.warning(f'interval {self._id}: no date in the next {SEARCH_LIMIT} candidates, giving up')
+                    return
+                if date == last:
+                    continue
+                last = date
+                while next_excluded is not None and next_excluded < date:
+                    next_excluded = next(excluded, None)
+                if date != next_excluded and date not in exdates:
+                    yield date
+        except (ValueError, OverflowError):
+            # a rule went past year 9999
+            log.warning(f'interval {self._id}: no date before year 9999, giving up')
 
-        # the date of the initial remindme
-        # is always included by default
 
-        ruleset.rdate(timeutil.to_minute(self.first_at))
-
-        for rule in self.rrules:
-            if not valid_rule(rule):
-                continue
-            ruleset.rrule(to_minute_rule(rule))
-
-        for rule in self.exrules:
-            if not valid_rule(rule):
-                continue
-            ruleset.exrule(to_minute_rule(rule))
-
-        for date in self.rdates:
-            ruleset.rdate(timeutil.to_minute(date))
-
-        for date in self.exdates:
-            ruleset.exdate(timeutil.to_minute(date))
-
+    def _occurrences(self, utcnow, tz_str=None):
+        """the dates after utcnow, as naive UTC, in order"""
+        if not tz_str:
+            instance_id = self.g_id if self.g_id else self.author
+            tz_str = lib.Connector.Connector.get_timezone(instance_id)
 
         # the rules are in the local time of the server (or user, in DMs):
-        # find the next event in local time, then convert it back to UTC
-        if not tz_str:
-            tz_str = lib.Connector.Connector.get_timezone(instance_id)
+        # find the next events in local time, then convert them back to UTC
         local_tz = tz.gettz(tz_str)
+        local_now = utcnow.replace(tzinfo=tz.UTC).astimezone(local_tz).replace(tzinfo=None)
 
-        local_now = utcnow.replace(tzinfo=tz.UTC)
-        local_now = local_now.astimezone(local_tz)
-        local_now = local_now.replace(tzinfo=None)
-
-        after = local_now
-        for _ in range(100):
-            local_next = ruleset.after(after)
-            if local_next is None:
-                return None
-
-            # back to UTC, for DB queries
-            next_trigger = local_next.replace(tzinfo=local_tz)
-            next_trigger = next_trigger.astimezone(tz.UTC)
-            next_trigger = next_trigger.replace(tzinfo=None)
-
-            if next_trigger > utcnow:
-                return next_trigger
-
+        for local_next in self._local_occurrences(local_now):
+            utc_next = local_next.replace(tzinfo=local_tz).astimezone(tz.UTC).replace(tzinfo=None)
             # a local time that happens twice (end of daylight saving time) is read
-            # as its first pass: now is in the second pass, the first one is over.
+            # as its first pass: when now is in the second pass, the first one is over.
             # Don't send it again, move on to the next occurrence
-            after = local_next
+            if utc_next > utcnow:
+                yield utc_next
 
-        return None
+
+    def next_trigger(self, utcnow, tz_str=None):
+        """the next date after utcnow (naive UTC), None if there is none"""
+        return next(self._occurrences(utcnow, tz_str), None)

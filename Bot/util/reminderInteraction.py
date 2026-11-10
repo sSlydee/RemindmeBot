@@ -395,7 +395,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         return discord.Embed(
             title='Add new rules',
             description='Pick a quick repetition below, or add a rule written like '\
-                        '`every friday at 7`, `every 2 weeks` or `every weekday`.\n'\
+                        '`every friday at 7`, `every 2 weeks`, `every weekday` or `every weekend`.\n'\
                         'RRULEs work too (e.g. `FREQ=MONTHLY;BYDAY=1MO`): '\
                         f'you can use an [RRULE Generator]({RRULE_GENERATOR_URL}).'
         )
@@ -437,6 +437,9 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         if rrule and mode == RuleMode.RRULE_ADD and not preview:
             # e.g. an UNTIL in the past
             rrule, error = None, 'This rule has no date in the future.'
+        if rrule and mode == RuleMode.RRULE_EX_ADD and not self._date_left(dtstart, rule_tz, exrule=str(rrule)):
+            rrule, error = None, 'This exception removes every future date of the reminder. '\
+                                 'To stop the reminder, delete it instead.'
 
         if not rrule:
             error_str = error or 'Unknown error occurred while parsing the rrule.'
@@ -520,6 +523,14 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         await self.rrule_callback(interaction, rule, RuleMode.RRULE_ADD)
 
 
+    def _date_left(self, dtstart, rule_tz: str, exrule: str) -> bool:
+        """whether the reminder still has a future date with this exception rule"""
+        probe = IntervalReminder(self.reminder._to_json())
+        probe.first_at = dtstart
+        probe.exrules = [*probe.exrules, exrule]
+        return probe.next_trigger(timeutil.utcnow(), tz_str=rule_tz) is not None
+
+
     @staticmethod
     def _date_error(date, info: str, user_input: str, utcnow: datetime) -> str:
         """why a parsed single date can't be used, None if it can"""
@@ -587,7 +598,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                             custom_callback=self.rrule_callback,
                             mode=RuleMode.RRULE_ADD,
                             help_text='Write the repetition in plain words (`every friday at 7`, `every 2 weeks`, '\
-                                      '`every weekday`) or paste an RRULE.\n'\
+                                      '`every weekday`, `every weekend`) or paste an RRULE.\n'\
                                       f'Build an RRULE with the [RRULE Generator]({RRULE_GENERATOR_URL}).')
         await util.interaction.open_popup(interaction, modal)
 

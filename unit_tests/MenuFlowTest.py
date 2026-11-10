@@ -4,7 +4,7 @@ See fakediscord.py. The database is an in-memory MongoDB (mongomock).
 """
 import asyncio
 import unittest
-from datetime import timedelta
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -30,6 +30,8 @@ GUILD = 1
 PICK_REMINDER = 'Select a reminder to edit'
 PICK_RULE = 'Select a rule/date for more info'
 QUICK_REPEAT = 'Quick repeat...'
+# a Tuesday, 12:00 in Paris, far from a clock change
+TUESDAY_NOON = datetime(2026, 11, 10, 11, 0)
 
 
 @unittest.skipUnless(mongomock, 'needs mongomock')
@@ -196,7 +198,13 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn('T100000', interval['rrules'][0])
 
     async def test_quick_repeat_every_weekend(self):
-        rem = self.add_reminder()
+        # a fixed clock: at 02:xx Paris, a weekend date may fall on the night the clocks
+        # go forward, where 02:xx doesn't exist
+        with patch.object(timeutil, 'utcnow', return_value=TUESDAY_NOON):
+            await self._quick_repeat_every_weekend()
+
+    async def _quick_repeat_every_weekend(self):
+        rem = self.add_reminder()  # on Thursday
         msg = await self.open_interval_menu()
         dropdown = next(item for item in msg.view.children if getattr(item, 'placeholder', None) == QUICK_REPEAT)
         self.assertIn('Every weekend (Sat-Sun)', [o.label for o in dropdown.options])
@@ -218,6 +226,46 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
             at = interval.next_trigger(at)
             self.assertIn(in_paris(at).weekday(), (5, 6))
             self.assertEqual(in_paris(at).time(), in_paris(rem.at).time())
+
+    async def add_weekend_rule(self) -> ChatMessage:
+        self.add_reminder()
+        msg = await self.open_interval_menu()
+        await self.discord.choose(msg, QUICK_REPEAT, 'weekends')
+        await self.discord.click(msg, 'Confirm')
+        return msg
+
+    async def test_exception_removing_every_date_is_refused(self):
+        msg = await self.add_weekend_rule()
+        await self.discord.click(msg, 'Add Exception Rule')
+        await self.discord.submit('every day')
+        self.assertEqual(msg.title, 'Invalid rrule')
+        self.assertIn('removes every future date', msg.embed.description)
+        [interval] = self.stored_intervals()
+        self.assertEqual(interval['exrules'], [])
+
+    async def test_reminder_with_only_its_first_date_left(self):
+        # the weekends are skipped, the reminder's own date (a weekday) stays:
+        # it can still be opened from the list
+        with patch.object(timeutil, 'utcnow', return_value=TUESDAY_NOON):
+            msg = await self.add_weekend_rule()
+            await self.discord.click(msg, 'Add Exception Rule')
+            await self.discord.submit('every weekend')
+            await self.discord.click(msg, 'Confirm')
+            [interval] = self.stored_intervals()
+            self.assertEqual(len(interval['exrules']), 1)
+
+            msg = await self.open_list()
+            await self.discord.choose(msg, PICK_REMINDER, '0')
+        upcoming = next(f for f in msg.embed.fields if f.name == 'Next occurrences')
+        self.assertEqual(len(upcoming.value.splitlines()), 1)
+
+    async def test_skipped_dates_show_five(self):
+        msg = await self.add_weekend_rule()
+        await self.discord.click(msg, 'Add Exception Rule')
+        await self.discord.submit('every saturday')
+        [field] = msg.embed.fields
+        self.assertEqual(field.name, 'Skipped dates')
+        self.assertEqual(len(field.value.splitlines()), 5)
 
     async def test_new_rule_shows_the_next_five_dates(self):
         self.add_reminder()

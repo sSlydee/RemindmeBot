@@ -37,6 +37,39 @@ class IntervalUpcomingTest(unittest.TestCase):
         self.assertEqual(lines[0], f'<t:{int(utc_timestamp(datetime(2026, 11, 13, 6)))}:F>')
         self.assertEqual(lines[-1], f'<t:{int(utc_timestamp(datetime(2026, 12, 11, 6)))}:F>')
 
+    def test_upcoming_is_one_pass(self):
+        # each search replays the rules from their start: once for all the dates
+        rem = _weekly_friday_7()
+        with patch.object(IntervalReminder, '_local_occurrences', autospec=True,
+                          side_effect=IntervalReminder._local_occurrences) as search:
+            self.assertEqual(len(rem.upcoming(5, tz_str='Europe/Paris')), 5)
+        self.assertEqual(search.call_count, 1)
+
+    def test_info_embed_uses_the_rule_timezone(self):
+        # the failed-delivery DM builds it without a display timezone (UTC)
+        rem = _weekly_friday_7()
+        with patch.object(lib.Connector.Connector, 'get_timezone', return_value='Europe/Paris'):
+            in_utc = rem.get_info_embed()
+            in_paris = rem.get_info_embed('Europe/Paris')
+        upcoming = lambda eb: next(f.value for f in eb.fields if f.name == 'Next occurrences')
+        self.assertEqual(upcoming(in_utc), upcoming(in_paris))
+        self.assertTrue(upcoming(in_utc).startswith(f'<t:{int(utc_timestamp(datetime(2026, 11, 13, 6)))}:F>\n'
+                                                    f'<t:{int(utc_timestamp(datetime(2026, 11, 20, 6)))}:F>'))
+
+    def test_exception_removing_every_date(self):
+        # every weekend, except every day: the search used to run into year 10000 (ValueError)
+        rem = _weekly_friday_7()
+        rem.rrules = ['DTSTART:20261113T070000\nRRULE:FREQ=WEEKLY;BYDAY=SA,SU']
+        rem.exrules = ['DTSTART:20261113T070000\nRRULE:FREQ=DAILY']
+        self.assertIsNone(rem.next_trigger(datetime(2026, 11, 10), tz_str='Europe/Paris'))
+
+    def test_endless_yearly_rule_fully_excluded(self):
+        # fewer than SEARCH_LIMIT years are left: the search ends at year 9999, no error
+        rem = _weekly_friday_7()
+        rem.rrules = ['DTSTART:20261113T070000\nRRULE:FREQ=YEARLY']
+        rem.exrules = ['DTSTART:20261113T070000\nRRULE:FREQ=YEARLY']
+        self.assertIsNone(rem.next_trigger(datetime(2026, 11, 14), tz_str='Europe/Paris'))
+
     def test_upcoming_stops_at_the_last_occurrence(self):
         rem = _weekly_friday_7()
         rem.rrules = ['DTSTART:20261113T070000\nRRULE:FREQ=WEEKLY;BYDAY=FR;COUNT=2']
