@@ -114,6 +114,14 @@ class DeleteRightsTest(unittest.TestCase):
         self.assertFalse(self.can(_member(USER), msg=f'standup <@&{USER}>'))
         self.assertFalse(self.can(_member(USER), msg=f'standup <@{USER}0>'))
 
+    def test_mentioned_in_a_role_reminder(self):
+        # a moderator's reminder for a role or @everyone isn't stopped by a member it names
+        rem = Reminder({'msg': f'meeting, <@{USER}> presents', 'g_id': str(GUILD), 'author': str(OWNER),
+                        'target': str(ROLE), 'target_mention': f'<@&{ROLE}>'})
+        self.assertFalse(lib.permissions.can_delete_reminder(rem, _member(USER)))
+        rem.target_mention = '@everyone'
+        self.assertFalse(lib.permissions.can_delete_reminder(rem, _member(USER)))
+
     def test_author_and_the_member_it_is_for(self):
         self.assertTrue(self.can(_member(OWNER)))
         self.assertTrue(self.can(_member(STRANGER)))
@@ -139,20 +147,25 @@ class SharedListTest(unittest.IsolatedAsyncioTestCase):
         Connector.db = mongomock.MongoClient().reminderBot
         Connector.set_timezone(GUILD, 'Europe/Paris')
         self.discord = FakeDiscord()
-        # the owner is in the bot's cache, the stranger is asked to Discord, others left
+        # the owner is in the bot's cache, the stranger is asked to Discord, others left;
+        # channel 2 is public, 3 private (the moderators')
+        channels = {2: SimpleNamespace(permissions_for=lambda m: SimpleNamespace(view_channel=True)),
+                    3: SimpleNamespace(permissions_for=lambda m: SimpleNamespace(view_channel=False))}
         self.guild = SimpleNamespace(
             id=GUILD, name='Test',
             get_member=lambda uid: SimpleNamespace(display_name='Owner Name') if uid == OWNER else None,
-            fetch_member=AsyncMock(side_effect=self.fetch_member))
+            fetch_member=AsyncMock(side_effect=self.fetch_member),
+            get_channel_or_thread=channels.get)
 
     async def fetch_member(self, user_id):
         if user_id == STRANGER:
             return SimpleNamespace(display_name='Stranger*')
         raise _not_found(10007, 'Unknown Member')
 
-    def add(self, msg, author, target, days=2):
-        rem = Reminder({'msg': msg, 'g_id': str(GUILD), 'ch_id': '2', 'ch_name': 'general',
-                        'author': str(author), 'target': str(target)})
+    def add(self, msg, author, target, days=2, channel=2):
+        mention = f'<@&{target}>' if target == ROLE else f'<@{target}>'
+        rem = Reminder({'msg': msg, 'g_id': str(GUILD), 'ch_id': str(channel), 'ch_name': 'general',
+                        'author': str(author), 'target': str(target), 'target_mention': mention})
         rem.created_at = timeutil.utcnow()
         rem.at = timeutil.utcnow().replace(second=0, microsecond=0) + timedelta(days=days)
         rem._id = Connector.add_reminder(rem)
@@ -179,12 +192,22 @@ class SharedListTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_for_me_lists_the_reminders_that_mention_me(self):
         self.add(f'call <@{STRANGER}> about it', author=OWNER, target=OWNER)
-        self.add(f'call <@!{STRANGER}>', author=OWNER, target=ROLE, days=3)
+        self.add(f'call <@!{STRANGER}> again', author=OWNER, target=OWNER, days=3)
         self.add(f'not me <@{USER}>', author=OWNER, target=OWNER, days=4)
         self.add(f'my own note <@{STRANGER}>', author=STRANGER, target=STRANGER, days=5)
+        # not: a reminder for a role that names them, one in a channel they can't read
+        self.add(f'team meeting, <@{STRANGER}> presents', author=OWNER, target=ROLE, days=6)
+        self.add(f'check <@{STRANGER}>\'s warnings', author=OWNER, target=OWNER, days=7, channel=3)
         msg = await self.open_list(_member(STRANGER))
         await self.discord.click(msg, 'For me', user_id=STRANGER)
-        self.assertEqual(self.listed(msg), [f'call <@{STRANGER}> about it', f'call <@!{STRANGER}>'])
+        self.assertEqual(self.listed(msg), [f'call <@{STRANGER}> about it', f'call <@!{STRANGER}> again'])
+
+    async def test_for_me_keeps_the_reminders_for_me_in_any_channel(self):
+        # reminders for them (/remind @them) are theirs, wherever they were written
+        self.add('for you, from the mods channel', author=OWNER, target=STRANGER, channel=3)
+        msg = await self.open_list(_member(STRANGER))
+        await self.discord.click(msg, 'For me', user_id=STRANGER)
+        self.assertEqual(self.listed(msg), ['for you, from the mods channel'])
 
     async def test_author_told_when_someone_else_deletes(self):
         self.add(f'call <@{STRANGER}>', author=OWNER, target=OWNER)
@@ -200,6 +223,21 @@ class SharedListTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dm.embed.title, 'Your reminder was deleted')
         self.assertIn(f'Deleted by <@{STRANGER}>', dm.embed.description)
         self.assertIn('(#general on Test)', dm.embed.description)
+
+    async def test_author_told_once_with_two_menus(self):
+        # the second menu deletes nothing: no second DM
+        self.add(f'call <@{STRANGER}>', author=OWNER, target=OWNER)
+        menus = []
+        for _ in range(2):
+            msg = await self.open_list(_member(STRANGER))
+            await self.discord.click(msg, 'For me', user_id=STRANGER)
+            await self.discord.choose(msg, PICK_REMINDER, '0', user_id=STRANGER)
+            menus.append(msg)
+        with self.assertLogs('Remindme.Listing', 'INFO'):
+            for msg in menus:
+                await self.discord.click(msg, 'Delete', user_id=STRANGER)
+                await self.discord.click(msg, 'Confirm', user_id=STRANGER)
+        self.assertEqual(len(self.discord.dms), 1)
 
     async def test_author_not_told_of_their_own_delete(self):
         self.add('mine', author=OWNER, target=OWNER)
@@ -321,8 +359,9 @@ class DeliveredDeleteTest(unittest.IsolatedAsyncioTestCase):
         self.discord = FakeDiscord()
 
     def delivered(self, target, text='weekly'):
+        mention = f'<@&{target}>' if target == ROLE else f'<@{target}>'
         rem = IntervalReminder({'msg': text, 'g_id': str(GUILD), 'ch_id': '2', 'ch_name': 'general',
-                                'author': str(OWNER), 'target': str(target)})
+                                'author': str(OWNER), 'target': str(target), 'target_mention': mention})
         rem.first_at = datetime(2026, 1, 2, 7, 0)
         rem.rrules = ['DTSTART:20260102T070000\nRRULE:FREQ=WEEKLY;BYDAY=FR']
         rem.at = rem.next_trigger(timeutil.utcnow(), tz_str='Europe/Paris')
@@ -339,7 +378,7 @@ class DeliveredDeleteTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(msg.embed.description, f'The reminder was deleted by <@{STRANGER}>')
 
     async def test_a_member_it_mentions(self):
-        rem, msg = self.delivered(target=ROLE, text=f'weekly with <@{USER}>')
+        rem, msg = self.delivered(target=STRANGER, text=f'weekly with <@{USER}>')
         with self.assertLogs('Remindme.Buttons', 'INFO'):
             await self.discord.press(msg, emoji='🗑️', member=_member(USER))
         self.assertIsNone(Connector.get_interval_by_id(rem._id))
@@ -347,6 +386,12 @@ class DeliveredDeleteTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dm.user_id, OWNER)
         self.assertIn(f'<@{USER}> (Member {USER})', dm.embed.description)
         self.assertIn('**weekly with', dm.embed.description)
+
+    async def test_a_member_named_in_a_role_reminder(self):
+        rem, msg = self.delivered(target=ROLE, text=f'weekly with <@{USER}>')
+        await self.discord.press(msg, emoji='🗑️', member=_member(USER))
+        self.assertIsNotNone(Connector.get_interval_by_id(rem._id))
+        self.assertIn('moderator', self.discord.last_message().content)
 
     async def test_author_deleting_is_not_told(self):
         rem, msg = self.delivered(target=STRANGER)

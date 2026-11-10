@@ -64,7 +64,7 @@ def hints(lang: str, info: str) -> str:
 
 
 def _plural_fr(text: str) -> str:
-    return re.sub(r'\b1 (jour|semaine|heure|an)s\b', r'1 \1', text)
+    return re.sub(r'\b1 (jour|semaine|heure|an|minute)s\b', r'1 \1', text)
 
 
 FR_TEXTS = {

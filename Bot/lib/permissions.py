@@ -47,11 +47,26 @@ def can_moderate(user, guild_id: int) -> bool:
             and user.guild_permissions.manage_messages)
 
 
+def is_mentioned_in(rem, user) -> bool:
+    """a member mentioned in a reminder for one member (the reminder of a moderator for a
+       role or @everyone isn't theirs to stop because it names them)
+    """
+    return rem.is_for_a_member() and user.id in rem.mentioned_ids()
+
+
+def can_see_channel(member, guild, channel_id) -> bool:
+    """the member can read that channel of the server (False when unknown)"""
+    if guild is None or channel_id is None or not isinstance(member, discord.Member):
+        return False
+    channel = guild.get_channel_or_thread(channel_id)
+    return channel is not None and channel.permissions_for(member).view_channel
+
+
 def can_delete_reminder(rem, user) -> bool:
     """a reminder can be deleted by its author, by the member it is for
-       (not a role) or mentions, and by the moderators of its server
+       (not a role) or mentions (see is_mentioned_in), and by the moderators of its server
     """
-    if user.id in (rem.author, rem.target) or user.id in rem.mentioned_ids():
+    if user.id in (rem.author, rem.target) or is_mentioned_in(rem, user):
         return True
     return bool(rem.g_id) and can_moderate(user, rem.g_id)
 

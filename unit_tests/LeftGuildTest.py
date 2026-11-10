@@ -77,6 +77,14 @@ class LeftGuildTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(Connector.guild_back(99))
         self.assertIsNone(Connector.db.settings.find_one({'g_id': '99'}))
 
+    def test_added_back_while_offline_is_never_purged(self):
+        # removed while the bot ran, added back while it was offline: no guild_join at startup
+        self.add('back', LEFT)
+        Connector.guild_left(LEFT, self.now - timedelta(days=8))
+        self.assertEqual(Connector.purge_left_guilds(self.now - Consts.left_guild_keep, present=[LEFT]), [])
+        self.assertEqual(self.due(), ['back'])
+        self.assertEqual(Connector._left_guilds(), [])
+
     def test_purged_after_the_week(self):
         self.add('left long ago', LEFT)
         self.add('left recently', OTHER, interval=True)
@@ -110,6 +118,7 @@ class LeftGuildTest(unittest.IsolatedAsyncioTestCase):
         self.add('left long ago', LEFT)
         Connector.guild_left(LEFT, self.now - timedelta(days=8))
         cog = rm.ReminderModule.__new__(rm.ReminderModule)
+        cog.client = SimpleNamespace(guilds=[SimpleNamespace(id=OTHER)])
         with self.assertLogs('Remindme.Core', 'INFO') as logs:
             await rm.ReminderModule.clean_interval_orphans.coro(cog)
         self.assertIn(f'guild {LEFT} left 7 days ago: deleted 1 reminder(s)', '\n'.join(logs.output))

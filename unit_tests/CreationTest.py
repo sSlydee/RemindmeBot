@@ -71,6 +71,18 @@ class CreationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Connector.db.reminders.count_documents({}), 1)
         self.assertEqual(self.ctx.answers[-1].title, 'New Reminder Created')
 
+    async def test_hidden_reply_times_out(self):
+        # hidden by default: its menu must still time out, or it stays in memory
+        await self.remindme('in 2 days')
+        view = self.discord.messages[-1].view
+        self.assertIsNotNone(view.timeout)
+        self.assertEqual(view.timeout, util.interaction.MENU_TIMEOUT)
+
+    def test_time_is_limited(self):
+        for command in (ReminderCreation.remindme, ReminderCreation.remind_user):
+            [time] = [o for o in command.options if o.name == 'time']
+            self.assertEqual(time.max_length, 100)
+
     async def test_discord_is_answered_before_the_history_is_read(self):
         await self.remindme('in 2 days')
         self.assertLess(self.ctx.calls.index('defer'), self.ctx.calls.index('history'))

@@ -102,6 +102,24 @@ def _join_spaced_args(args):
     return joined_args
             
 
+# '1 mon', '2minut', '3 da': the start of a unit word. Not a word that merely starts
+# like one: 'monday' is not months, 'wednesday' not weeks
+_UNIT_WORDS = {'years': 'y', 'months': 'mo', 'weeks': 'w', 'days': 'd', 'hours': 'h', 'minutes': 'mi'}
+_UNIT_ALIASES = {'m': 'minutes', 'min': 'minutes', 'mins': 'minutes', 'hr': 'hours', 'hrs': 'hours',
+                 'yr': 'years', 'yrs': 'years', 'wk': 'weeks', 'wks': 'weeks', 'mth': 'months', 'mths': 'months'}
+
+
+def _unit(text: str):
+    """the unit of a duration ('years' ... 'minutes'), None if text isn't one"""
+    text = text.lower()
+    if text in _UNIT_ALIASES:
+        return _UNIT_ALIASES[text]
+    for word, shortest in _UNIT_WORDS.items():
+        if text.startswith(shortest) and word.startswith(text):
+            return word
+    return None
+
+
 def _parse_relative(args, utcnow):
     """parse the date to relative arguments
        (2y, 5d,...)
@@ -130,31 +148,23 @@ def _parse_relative(args, utcnow):
         if arg[0] == None:
             return (utcnow, f'• Argument {arg} is starting with a number\n', None)
 
-        if arg[1] == '' and previous_unit.startswith('h'):
+        unit = _unit(arg[1])
+        if arg[1] == '' and previous_unit == 'hours':
             # '1h30': the minutes after the hours
-            arg = (arg[0], 'm')
-        previous_unit = arg[1]
+            unit = 'minutes'
+        previous_unit = unit
 
-        if arg[1].startswith('y'):
+        if unit == 'years':
             intvl = relativedelta(years=arg[0])
-
-        elif arg[1].startswith('mo'):
+        elif unit == 'months':
             intvl = relativedelta(months=arg[0])
-
-        elif arg[1].startswith('w'):
+        elif unit == 'weeks':
             intvl = relativedelta(weeks=arg[0])
-
-        elif arg[1] == 'd' or arg[1].startswith('da'):
-            # condition must not detect the month 'december'
-            intvl = timedelta(days=arg[0]) 
-
-        elif arg[1].startswith('h'):
+        elif unit == 'days':
+            intvl = timedelta(days=arg[0])
+        elif unit == 'hours':
             intvl = timedelta(hours=arg[0])
-
-        elif arg[1].startswith('mi'):
-            intvl = timedelta(minutes=arg[0])
-        
-        elif arg[1] == 'm':
+        elif unit == 'minutes':
             intvl = timedelta(minutes=arg[0])
         else:
             return (utcnow, f'• Unknown parameter {arg}', None)
@@ -330,15 +340,20 @@ _FRENCH = [
     (re.compile(rf'\b{_DAY_FR}\s+prochain\b', _I), r'next \1'),
     (re.compile(r'\bla\s+semaine\s+prochaine\b', _I), 'next week'),
     (re.compile(r'\ble\s+mois\s+prochain\b', _I), 'next month'),
-    (re.compile(r'\b(?:tous\s+les|chaque)\s+jours?\s+(?:de\s+(?:la\s+)?semaine|ouvr[ée]s?)\b|\ben\s+semaine\b', _I),
+    (re.compile(r'\b(?:tous\s+les|chaque)\s+jours?\s+(?:de\s+(?:la\s+)?semaine|ouvr[ée]s?)\b|\ben\s+semaine\b'
+                r'|\b(?:(?:tous\s+les|chaque)\s+jours?\s+)?du\s+lundi\s+au\s+vendredi\b', _I),
      'every weekday'),
+    # 'tous les 15 du mois', 'chaque 1er du mois', 'le 15 de chaque mois': a day of every month
+    (re.compile(r'\b(?:(?:tous\s+les|chaque)\s+(\d{1,2})(?:er|e)?\s+(?:du|de\s+chaque)\s+mois'
+                r'|le\s+(\d{1,2})(?:er|e)?\s+de\s+(?:chaque|tous\s+les)\s+mois)\b', _I),
+     lambda m: f'every month on the {_ordinal(m[1] or m[2])}'),
     (re.compile(r'\b(?:tous|toutes)\s+les\b|\bchaque\b', _I), 'every'),
     (re.compile(r"\bjusqu['’]?\s*(?:au|à|a)\b", _I), 'until'),
     (re.compile(r'(\d+)\s*heures?\b', _I), r'\1 hours'),
     (re.compile(r'(\d+)\s*jours?\b', _I), r'\1 days'),
     (re.compile(r'(\d+)\s*semaines?\b', _I), r'\1 weeks'),
     (re.compile(r'(\d+)\s*mois\b', _I), r'\1 months'),
-    (re.compile(r'(\d+)\s*(?:ans?|ann[ée]es?)\b', _I), r'\1 years'),
+    (re.compile(r'(\d+)\s*(?:ans?|ann[ée]es?)\b(?!\s+hours?\b)', _I), r'\1 years'),
     (re.compile(r'\bevery\s+jours?\b', _I), 'every day'),
     (re.compile(r'\bevery\s+semaines?\b', _I), 'every week'),
     (re.compile(r'\bevery\s+mois\b', _I), 'every month'),
@@ -358,10 +373,11 @@ _FRENCH = [
     (re.compile(r'\bdu\s+mois\b', _I), 'of the month'),
     (re.compile(rf'\b{_DAY_FR}s?\b', _I), lambda m: _DAYS_FR[m[1].lower()]),
     (re.compile(r'\b(' + '|'.join(_MONTHS_FR) + r')\b', _I), lambda m: _MONTHS_FR[m[1].lower()]),
-    (re.compile(r'\bmidi\b', _I), 'noon'),
+    (re.compile(r'(?<![\w-])midi\b', _I), 'noon'),  # not 'après-midi'
     (re.compile(r'\bminuit\b', _I), 'midnight'),
     (re.compile(r'\bdans\b', _I), 'in'),
-    (re.compile(r'(?:\bà|\ba)\s+(?=\d|noon\b|midnight\b)', _I), 'at '),
+    # 'à 9h', 'à midi'; without its accent only before a time ('a 9h'): 'a 5 minutes' is English
+    (re.compile(r'\bà\s+(?=\d|noon\b|midnight\b)|\ba\s+(?=\d{1,2}\s*(?:h\b|h\d|:\d)|noon\b|midnight\b)', _I), 'at '),
     (re.compile(r'\bet\b', _I), 'and'),
 ]
 
@@ -406,14 +422,41 @@ _AT_TIME_RE = re.compile(r'\b((?:every|in\s+\d+\s+days?)\b[^:]*?[a-z])\s+(\d{1,2
 _COMPACT_DURATION_RE = re.compile(r'\b\d+(?:y|mo|w|d|mi|min|m)\b', re.IGNORECASE)
 
 
+# what makes '9h' a time of day: a day, a date, 'at', a repetition ('2h from now' stays a duration)
+_TIME_CONTEXT_RE = re.compile(
+    r'\b(?:at|today|tomorrow|tonight|next|every|noon|midnight|'
+    r'mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:rs?|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|'
+    + _MONTH[3:-1] + r')\b|\d{1,2}[/.-]\d{1,2}', re.IGNORECASE)
+# a duration with words around it: 'in 2h', 'after 2h', '2h from now', '2h later', '2h and 30 min'
+_DURATION_FILLERS = [(re.compile(r'^(?:in|after)\s+', re.IGNORECASE), ''),
+                     (re.compile(r'\s+(?:from\s+now|later|please)$', re.IGNORECASE), ''),
+                     (re.compile(r'\s+and\s+', re.IGNORECASE), ' ')]
+
+
+def _duration_text(text: str) -> str:
+    for pattern, replacement in _DURATION_FILLERS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def _h_times(text: str) -> str:
-    if not _COMPACT_DURATION_RE.search(text):
+    if not _COMPACT_DURATION_RE.search(text) and _TIME_CONTEXT_RE.search(text):
         text = _H_TIME_RE.sub(lambda m: f'{m[1]}:{m[2] or "00"}', text)
+    if re.search(r'\bevery\b', text, re.IGNORECASE):
+        # the rule parser drops 'at noon' in a repetition
+        text = re.sub(r'\b(?:at\s+)?noon\b', 'at 12:00', text, flags=re.IGNORECASE)
+        text = re.sub(r'\b(?:at\s+)?midnight\b', 'at 0:00', text, flags=re.IGNORECASE)
     return _AT_TIME_RE.sub(lambda m: m[0] if m[1].lower().endswith(' at') else f'{m[1]} at {m[2]}', text)
+
+
+MAX_INPUT_LEN = 300
 
 
 def parse(input, utcnow, timezone='UTC'):
     """parse the input string, see _parse; a date too far away is an error"""
+    if len(input or '') > MAX_INPUT_LEN:
+        # its regexes and the rule parser can take seconds on thousands of characters
+        return (utcnow, f'• the input is too long (more than {MAX_INPUT_LEN} characters)\n')
     try:
         return _parse(input, utcnow, timezone)
     except OverflowError:
@@ -449,8 +492,8 @@ def _parse(input, utcnow, timezone='UTC'):
     # next separate number form char arguments
 
     rx = re.compile(r'[^a-zA-Z0-9-]') # allow negative sign
-    # 'in 1h30' is the duration '1h30'
-    args = rx.split(re.sub(r'^in\s+', '', input, flags=re.IGNORECASE))
+    # 'in 1h30', 'after 2h', '2h from now' are the durations '1h30', '2h'
+    args = rx.split(_duration_text(input))
     # numbers and units written together: '1h30m' -> '1', 'h', '30', 'm'
     args = [part for arg in args for part in re.findall(r'-?\d+|[^\d-]+', arg)]
 
@@ -576,6 +619,17 @@ def _rule_fr(rule_str: str, start=True) -> str:
     days = [d for d in parts.get('BYDAY', '').split(',') if d]
     monthdays = [int(d) for d in parts.get('BYMONTHDAY', '').split(',') if d]
     months = [int(m) for m in parts.get('BYMONTH', '').split(',') if m]
+    # combinations the sentences below would leave out (the English text says them)
+    if days and freq in ('MINUTELY', 'HOURLY', 'DAILY'):
+        raise ValueError('days with a short frequency')
+    if months and freq != 'YEARLY':
+        raise ValueError('months with a short frequency')
+    if monthdays and freq not in ('MONTHLY', 'YEARLY'):
+        raise ValueError('days of the month with a short frequency')
+    if parts.get('BYMINUTE') and not parts.get('BYHOUR') and freq not in ('HOURLY',):
+        raise ValueError('minutes without hours')
+    if parts.get('BYHOUR') and freq in ('MINUTELY', 'HOURLY'):
+        raise ValueError('hours with a short frequency')
 
     if freq == 'MINUTELY':
         text = 'toutes les minutes' if n == 1 else f'toutes les {n} minutes'

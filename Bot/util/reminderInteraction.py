@@ -213,7 +213,8 @@ class RuleModal(ReportErrors, discord.ui.DesignerModal):
         if help_text:
             self.add_item(discord.ui.TextDisplay(help_text))
 
-        self.input = discord.ui.InputText(style=discord.InputTextStyle.singleline)
+        # an RRULE pasted from a generator fits, a long text can't block the parser
+        self.input = discord.ui.InputText(style=discord.InputTextStyle.singleline, max_length=300)
         self.add_item(discord.ui.Label(field, self.input))
 
 
@@ -301,6 +302,7 @@ class EditModal(ReportErrors, discord.ui.Modal):
             self.add_item(discord.ui.InputText(
                 label=tr(lang, 'Remind at (e.g. tomorrow 9:00, 13 Nov 18:30)'),
                 value=self.prefilled_at,
+                max_length=100,
                 required=True,
                 style=discord.InputTextStyle.singleline
                 )
@@ -985,11 +987,12 @@ class ReminderEditView(util.interaction.CustomView):
 
         if view.value:
             if isinstance(self.reminder, IntervalReminder):
-                Connector.delete_interval(self.reminder._id)
+                deleted = Connector.delete_interval(self.reminder._id)
             else:
-                Connector.delete_reminder(self.reminder._id)
+                deleted = Connector.delete_reminder(self.reminder._id)
             self.stop() # back to the list, without this reminder
-            if self.is_foreign:
+            # not when another menu deleted it first, or it was delivered meanwhile
+            if self.is_foreign and deleted:
                 # by the member it was for or mentions, or a moderator (see /reminder_list)
                 log.info(f'reminder {self.reminder._id} of {self.reminder.author} deleted by {self.owner_id}')
                 await util.notices.tell_author_deleted(interaction.client, self.reminder, interaction.user)

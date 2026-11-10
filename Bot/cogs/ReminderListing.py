@@ -39,7 +39,12 @@ EMPTY_TEXTS = {
 def load_reminders(stm) -> list[Reminder]:
     """the reminders the list shows, sorted by date"""
     if stm.mode == FOR_ME:
-        return Connector.get_reminders_for(stm.scope.guild_id, stm.scope.user_id)
+        # the ones that only mention the user: if they may stop them, and can read their channel
+        # (a reminder in a private channel of the moderators that names them stays private)
+        viewer, guild = stm.ctx.author, getattr(stm.ctx, 'guild', None)
+        return [rem for rem in Connector.get_reminders_for(stm.scope.guild_id, stm.scope.user_id)
+                if rem.target == stm.scope.user_id
+                or (lib.permissions.is_mentioned_in(rem, viewer) and lib.permissions.can_see_channel(viewer, guild, rem.ch_id))]
     if stm.mode == SERVER:
         return Connector.get_guild_reminders(stm.scope.guild_id)
     return Connector.get_scoped_reminders(stm.scope)

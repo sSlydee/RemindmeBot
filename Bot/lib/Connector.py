@@ -84,14 +84,20 @@ class Connector:
         return [doc['g_id'] for doc in Connector.db.settings.find({'left_at': {'$exists': True}}, {'g_id': 1})]
 
     @staticmethod
-    def purge_left_guilds(left_before) -> list:
+    def purge_left_guilds(left_before, present=()) -> list:
         """delete the data of the servers left before that date (naive UTC)
+
+        present: the ids of the servers the bot is in: back, never deleted (their mark is cleared)
 
         Returns:
             list: (guild id, reminders, intervals) deleted
         """
         purged = []
+        present = {str(guild_id) for guild_id in present}
         for doc in Connector.db.settings.find({'left_at': {'$lt': utc_timestamp(left_before)}}, {'g_id': 1}):
+            if doc['g_id'] in present:
+                Connector.guild_back(int(doc['g_id']))
+                continue
             purged.append((doc['g_id'], *Connector.delete_guild(int(doc['g_id']))))
         return purged
 

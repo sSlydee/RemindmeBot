@@ -178,6 +178,11 @@ async def on_ready():
     log.info(bot.user.id)
     log.info('----------------')
 
+    # added back while the bot was offline: Discord reports these servers as available, not joined
+    for guild in bot.guilds:
+        if Connector.guild_back(guild.id):
+            log.info(f'back in guild {guild.id} (added while offline): its reminders are sent again')
+
     config_help()
 
     await bot.change_presence(activity=discord.Game(name='/remindme'))

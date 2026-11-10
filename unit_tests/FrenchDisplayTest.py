@@ -362,6 +362,14 @@ class RuleTextTest(unittest.TestCase):
 
     def test_unknown_rules_stay_in_english(self):
         self.assertTrue(self.fr('FREQ=MONTHLY;BYSETPOS=1;BYDAY=MO').startswith('for the 1st instance'))
+        # French would leave a part out: the English says it all
+        for rule in ('FREQ=DAILY;BYDAY=MO,WE', 'FREQ=WEEKLY;BYMONTH=7', 'FREQ=DAILY;BYMINUTE=30'):
+            self.assertFalse(self.fr(rule).startswith(('tous', 'toutes')), rule)
+
+    def test_one_minute(self):
+        rem = IntervalReminder({'msg': 'x', 'author': '3', 'target': '3', 'lang': 'fr'})
+        rem.at = NOW + timedelta(minutes=1)
+        self.assertEqual(rem.get_interval_string(now=NOW), '1 minute')
 
     def test_english_unchanged(self):
         rule = 'DTSTART:20261112T090000\nRRULE:FREQ=WEEKLY;BYDAY=SA,SU'

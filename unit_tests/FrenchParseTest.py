@@ -147,5 +147,57 @@ class MessageTest(unittest.TestCase):
         self.assertNotIn('utc', info.lower())
 
 
+
+class ReviewFixesTest(ParseCase):
+    """inputs the review of the French changes found misread"""
+
+    def test_time_before_a_day(self):
+        # 'monday' was read as months ('mo...'): 9h30 lundi was 30 months away
+        self.check('9h30 lundi', utc(2026, 11, 9, 9, 30))
+        self.check('9h30 monday', utc(2026, 11, 9, 9, 30))
+        self.check('8h30 mercredi', utc(2026, 11, 11, 8, 30))
+        # the short units still work
+        self.check('1 mon', datetime(2026, 12, 7, 13, 30))
+        self.check('2 hrs', datetime(2026, 11, 7, 15, 30))
+
+    def test_day_of_every_month(self):
+        # was every 15 months
+        self.rule('tous les 15 du mois', freq='MONTHLY', bymonthday='15', interval='1')
+        self.rule('le 15 de chaque mois', freq='MONTHLY', bymonthday='15', interval='1')
+        self.rule('tous les 1er du mois à 9h', freq='MONTHLY', bymonthday='1', byhour='9')
+        self.rule('chaque 1er du mois', freq='MONTHLY', bymonthday='1')
+
+    def test_durations_with_words(self):
+        # read as 02:00 today since '2h' became a time of day
+        for text in ('2h from now', 'in 2h please', '2h later', 'after 2h'):
+            self.check(text, datetime(2026, 11, 7, 15, 30))
+        self.check('2h and 30 min', datetime(2026, 11, 7, 16, 0))
+        self.check('1h30 from now', datetime(2026, 11, 7, 15, 0))
+        self.check('1h et 30 min', datetime(2026, 11, 7, 15, 0))
+        self.check('2 days 10h', datetime(2026, 11, 9, 23, 30))
+
+    def test_noon_and_midnight_in_repetitions(self):
+        self.rule('tous les jours à midi', freq='DAILY', byhour='12', byminute='0')
+        self.rule('every day at noon', freq='DAILY', byhour='12', byminute='0')
+        self.rule('tous les jours à minuit', freq='DAILY', byhour='0', byminute='0')
+
+    def test_other_french(self):
+        self.rule('du lundi au vendredi à 8h', freq='WEEKLY', byday='MO,TU,WE,TH,FR', byhour='8')
+        # 'midi' inside 'après-midi' isn't noon
+        at, _ = p.parse('cet après-midi', SATURDAY, TZ)
+        self.assertNotEqual(at, utc(2026, 11, 8, 12, 0))
+
+    def test_english_words_left_alone(self):
+        # 'a' before a number: only before a time ('a 9h')
+        self.check('in a 5 minutes', datetime(2026, 11, 7, 13, 35))
+        self.check('demain a 9h', utc(2026, 11, 8, 9, 0))
+
+    def test_long_input(self):
+        import time
+        start = time.perf_counter()
+        at, info = p.parse('1' * 6000 + ' jours', SATURDAY, TZ)
+        self.assertLess(time.perf_counter() - start, 0.5)
+        self.assertIn('too long', info)
+
 if __name__ == '__main__':
     unittest.main()

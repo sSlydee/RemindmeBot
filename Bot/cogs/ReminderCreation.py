@@ -442,7 +442,9 @@ class ReminderCreation(commands.Cog):
         )
         stm.tz_str = tz_str
 
-        view = NewReminderView(rem, stm=stm, info_str=info, rrule_override=rrule, timeout=delete_after)
+        # deleted after a while, or the usual menu timeout: a view without one stays in memory
+        timeout = {'timeout': delete_after} if delete_after else {}
+        view = NewReminderView(rem, stm=stm, info_str=info, rrule_override=rrule, **timeout)
         tiny_embed = view.get_embed() 
 
         view.origin = await ctx.respond(embed=tiny_embed, delete_after=delete_after, view=view,
@@ -471,7 +473,8 @@ class ReminderCreation(commands.Cog):
                         target:discord.Option((discord.Member, discord.Role), 'the member or role to remind', required=True,
                                               description_localizations={'fr': 'le membre ou le rôle à qui rappeler'}),
                         time:discord.Option(str, 'when: in 2h, tomorrow 9:00, every friday at 7 (see /help)', required=True,
-                                            autocomplete=time_autocomplete, description_localizations={'fr': 'quand : dans 2h, demain 9h, tous les vendredis à 7h (voir /help)'}),
+                                            autocomplete=time_autocomplete, max_length=100,
+                                            description_localizations={'fr': 'quand : dans 2h, demain 9h, tous les vendredis à 7h (voir /help)'}),
                         message:discord.Option(str, 'what to remind them of', required=True,
                                                description_localizations={'fr': 'de quoi lui rappeler'},
                                                max_length=MAX_MESSAGE_LEN)):
@@ -490,7 +493,8 @@ class ReminderCreation(commands.Cog):
                             **lib.permissions.EVERYWHERE)
     async def remindme(self, ctx:discord.ApplicationContext,
                         time:discord.Option(str, 'when: in 2h, tomorrow 9:00, every friday at 7 (see /help)', required=True,
-                                            autocomplete=time_autocomplete, description_localizations={'fr': 'quand : dans 2h, demain 9h, tous les vendredis à 7h (voir /help)'}),
+                                            autocomplete=time_autocomplete, max_length=100,
+                                            description_localizations={'fr': 'quand : dans 2h, demain 9h, tous les vendredis à 7h (voir /help)'}),
                         message:discord.Option(str, 'what to remind you of', required=True,
                                                description_localizations={'fr': 'de quoi te rappeler'},
                                                max_length=MAX_MESSAGE_LEN)):
