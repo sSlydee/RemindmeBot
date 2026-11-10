@@ -356,9 +356,10 @@ class Connector:
 
     @staticmethod
     def get_reminders_for(guild_id: int, user_id: int) -> list:
-        """the reminders of a server for a user, created by other members"""
-        return Connector._find_reminders({'g_id': str(guild_id), 'target': str(user_id),
-                                          'author': {'$ne': str(user_id)}})
+        """the reminders of a server for a user, or mentioning them, created by other members"""
+        mention = {'$regex': f'<@!?{int(user_id)}>'}
+        return Connector._find_reminders({'g_id': str(guild_id), 'author': {'$ne': str(user_id)},
+                                          '$or': [{'target': str(user_id)}, {'msg': mention}, {'title': mention}]})
 
     @staticmethod
     def get_guild_reminders(guild_id: int) -> list:

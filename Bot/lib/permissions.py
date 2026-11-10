@@ -48,9 +48,9 @@ def can_moderate(user, guild_id: int) -> bool:
 
 def can_delete_reminder(rem, user) -> bool:
     """a reminder can be deleted by its author, by the member it is for
-       (not a role), and by the moderators of its server
+       (not a role) or mentions, and by the moderators of its server
     """
-    if user.id in (rem.author, rem.target):
+    if user.id in (rem.author, rem.target) or user.id in rem.mentioned_ids():
         return True
     return bool(rem.g_id) and can_moderate(user, rem.g_id)
 

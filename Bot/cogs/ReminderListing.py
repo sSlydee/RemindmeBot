@@ -30,7 +30,7 @@ MODE_LABELS = {MINE: 'My reminders', FOR_ME: 'For me', SERVER: 'Whole server'}
 EMPTY_TEXTS = {
     MINE: 'No pending reminders. Create one with `/remindme`.',
     FOR_ME: 'No reminders from other members for you. When someone reminds you with `/remind`, '
-            'you can delete their reminder here.',
+            'or mentions you in a reminder, you can delete it here.',
     SERVER: 'No pending reminders on this server.',
 }
 

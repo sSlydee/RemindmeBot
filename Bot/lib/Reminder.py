@@ -1,5 +1,6 @@
 import discord # for reminder
 import heapq
+import re
 import itertools
 from dateutil import tz
 import dateutil.rrule as rr
@@ -257,6 +258,11 @@ class Reminder:
         eb.timestamp = at_utc
 
         return eb
+
+
+    def mentioned_ids(self) -> set:
+        """the members mentioned in the title or the text (not the roles)"""
+        return {int(uid) for uid in re.findall(r'<@!?(\d+)>', f'{self.title or ""} {self.msg or ""}')}
 
 
     def get_info_embed(self, tz_str='UTC', title='Reminder Info'):

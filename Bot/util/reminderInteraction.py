@@ -7,6 +7,7 @@ import validators
 import logging
 
 import util.interaction
+import util.notices
 from util.consts import Consts
 import util.verboseErrors
 import lib.input_parser
@@ -947,10 +948,11 @@ class ReminderEditView(util.interaction.CustomView):
                 Connector.delete_interval(self.reminder._id)
             else:
                 Connector.delete_reminder(self.reminder._id)
-            if self.is_foreign:
-                # by the member it was for, or a moderator (see /reminder_list)
-                log.info(f'reminder {self.reminder._id} of {self.reminder.author} deleted by {self.owner_id}')
             self.stop() # back to the list, without this reminder
+            if self.is_foreign:
+                # by the member it was for or mentions, or a moderator (see /reminder_list)
+                log.info(f'reminder {self.reminder._id} of {self.reminder.author} deleted by {self.owner_id}')
+                await util.notices.tell_author_deleted(interaction.client, self.reminder, interaction.user)
             return
 
         await self.show(embed=self.get_embed(), view=self)

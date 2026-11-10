@@ -40,6 +40,7 @@ def _member(user_id, guild_id=GUILD, moderator=False):
     member = MagicMock(spec=discord.Member)
     member.id = user_id
     member.mention = f'<@{user_id}>'
+    member.display_name = f'Member {user_id}'
     member.guild = SimpleNamespace(id=guild_id, name='Test')
     member.guild_permissions = discord.Permissions(manage_messages=moderator)
     return member
@@ -100,10 +101,18 @@ class RemindPermissionTest(unittest.TestCase):
 class DeleteRightsTest(unittest.TestCase):
     """who may delete a reminder (its author can also edit it)"""
 
-    def can(self, user, target=STRANGER, g_id=GUILD):
-        rem = Reminder({'msg': 'x', 'g_id': str(g_id) if g_id else None,
+    def can(self, user, target=STRANGER, g_id=GUILD, msg='x', title=None):
+        rem = Reminder({'msg': msg, 'title': title, 'g_id': str(g_id) if g_id else None,
                         'author': str(OWNER), 'target': str(target)})
         return lib.permissions.can_delete_reminder(rem, user)
+
+    def test_members_it_mentions(self):
+        self.assertTrue(self.can(_member(USER), msg=f'standup with <@{USER}>'))
+        self.assertTrue(self.can(_member(USER), msg=f'standup with <@!{USER}>'))
+        self.assertTrue(self.can(_member(USER), title=f'<@{USER}> call'))
+        # a role is not a member, another id is not this one
+        self.assertFalse(self.can(_member(USER), msg=f'standup <@&{USER}>'))
+        self.assertFalse(self.can(_member(USER), msg=f'standup <@{USER}0>'))
 
     def test_author_and_the_member_it_is_for(self):
         self.assertTrue(self.can(_member(OWNER)))
@@ -167,6 +176,39 @@ class SharedListTest(unittest.IsolatedAsyncioTestCase):
     def authors(self, msg):
         # each dropdown entry starts with its author
         return [option.description.split(' · ')[0] for option in self.dropdown(msg)]
+
+    async def test_for_me_lists_the_reminders_that_mention_me(self):
+        self.add(f'call <@{STRANGER}> about it', author=OWNER, target=OWNER)
+        self.add(f'call <@!{STRANGER}>', author=OWNER, target=ROLE, days=3)
+        self.add(f'not me <@{USER}>', author=OWNER, target=OWNER, days=4)
+        self.add(f'my own note <@{STRANGER}>', author=STRANGER, target=STRANGER, days=5)
+        msg = await self.open_list(_member(STRANGER))
+        await self.discord.click(msg, 'For me', user_id=STRANGER)
+        self.assertEqual(self.listed(msg), [f'call <@{STRANGER}> about it', f'call <@!{STRANGER}>'])
+
+    async def test_author_told_when_someone_else_deletes(self):
+        self.add(f'call <@{STRANGER}>', author=OWNER, target=OWNER)
+        msg = await self.open_list(_member(STRANGER))
+        await self.discord.click(msg, 'For me', user_id=STRANGER)
+        await self.discord.choose(msg, PICK_REMINDER, '0', user_id=STRANGER)
+        with self.assertLogs('Remindme.Listing', 'INFO'):
+            await self.discord.click(msg, 'Delete', user_id=STRANGER)
+            await self.discord.click(msg, 'Confirm', user_id=STRANGER)
+        self.assertEqual(Connector.db.reminders.count_documents({}), 0)
+        [dm] = self.discord.dms
+        self.assertEqual(dm.user_id, OWNER)
+        self.assertEqual(dm.embed.title, 'Your reminder was deleted')
+        self.assertIn(f'Deleted by <@{STRANGER}>', dm.embed.description)
+        self.assertIn('(#general on Test)', dm.embed.description)
+
+    async def test_author_not_told_of_their_own_delete(self):
+        self.add('mine', author=OWNER, target=OWNER)
+        msg = await self.open_list(_member(OWNER))
+        await self.discord.choose(msg, PICK_REMINDER, '0')
+        await self.discord.click(msg, 'Delete')
+        await self.discord.click(msg, 'Confirm')
+        self.assertEqual(Connector.db.reminders.count_documents({}), 0)
+        self.assertEqual(self.discord.dms, [])
 
     async def test_the_member_it_is_for_can_delete_it(self):
         self.add('from the owner', author=OWNER, target=STRANGER)
@@ -278,8 +320,8 @@ class DeliveredDeleteTest(unittest.IsolatedAsyncioTestCase):
         Connector.set_timezone(GUILD, 'Europe/Paris')
         self.discord = FakeDiscord()
 
-    def delivered(self, target):
-        rem = IntervalReminder({'msg': 'weekly', 'g_id': str(GUILD), 'ch_id': '2',
+    def delivered(self, target, text='weekly'):
+        rem = IntervalReminder({'msg': text, 'g_id': str(GUILD), 'ch_id': '2', 'ch_name': 'general',
                                 'author': str(OWNER), 'target': str(target)})
         rem.first_at = datetime(2026, 1, 2, 7, 0)
         rem.rrules = ['DTSTART:20260102T070000\nRRULE:FREQ=WEEKLY;BYDAY=FR']
@@ -295,6 +337,32 @@ class DeliveredDeleteTest(unittest.IsolatedAsyncioTestCase):
             await self.discord.press(msg, emoji='🗑️', member=_member(STRANGER))
         self.assertIsNone(Connector.get_interval_by_id(rem._id))
         self.assertEqual(msg.embed.description, f'The reminder was deleted by <@{STRANGER}>')
+
+    async def test_a_member_it_mentions(self):
+        rem, msg = self.delivered(target=ROLE, text=f'weekly with <@{USER}>')
+        with self.assertLogs('Remindme.Buttons', 'INFO'):
+            await self.discord.press(msg, emoji='🗑️', member=_member(USER))
+        self.assertIsNone(Connector.get_interval_by_id(rem._id))
+        [dm] = self.discord.dms
+        self.assertEqual(dm.user_id, OWNER)
+        self.assertIn(f'<@{USER}> (Member {USER})', dm.embed.description)
+        self.assertIn('**weekly with', dm.embed.description)
+
+    async def test_author_deleting_is_not_told(self):
+        rem, msg = self.delivered(target=STRANGER)
+        await self.discord.press(msg, emoji='🗑️', member=_member(OWNER))
+        self.assertIsNone(Connector.get_interval_by_id(rem._id))
+        self.assertEqual(self.discord.dms, [])
+
+    async def test_author_with_closed_dms(self):
+        rem, msg = self.delivered(target=STRANGER)
+        self.discord.closed_dms.add(OWNER)
+        with self.assertLogs('Remindme.Notices', 'INFO') as logs:
+            await self.discord.press(msg, emoji='🗑️', member=_member(STRANGER))
+        self.assertIsNone(Connector.get_interval_by_id(rem._id))
+        self.assertIn('could not tell', '\n'.join(logs.output))
+        self.assertEqual(msg.embed.title, 'Deleted Reminder')
+        self.assertEqual(self.discord.dms, [])
 
     async def test_the_member_it_is_for_cannot_skip(self):
         rem, msg = self.delivered(target=STRANGER)

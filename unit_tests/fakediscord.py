@@ -152,6 +152,36 @@ class FakeFollowup:
         return msg
 
 
+class FakeUser:
+    """a Discord user the bot can DM"""
+    def __init__(self, world, user_id):
+        self.world = world
+        self.id = user_id
+
+    async def send(self, content=None, embed=None, **_):
+        if self.id in self.world.closed_dms:
+            raise discord.Forbidden(SimpleNamespace(status=403, reason='Forbidden'),
+                                    {'code': 50007, 'message': 'Cannot send messages to this user'})
+        self.world.dms.append(SimpleNamespace(user_id=self.id, content=content, embed=embed))
+
+
+class FakeClient:
+    def __init__(self, world):
+        self.world = world
+
+    def dispatch(self, *args):
+        pass
+
+    def get_user(self, user_id):
+        return None  # not cached: fetched
+
+    async def fetch_user(self, user_id):
+        return FakeUser(self.world, user_id)
+
+    def get_guild(self, guild_id):
+        return SimpleNamespace(id=guild_id, name='Test')
+
+
 class FakeInteraction:
     def __init__(self, world, user_id, target: ChatMessage = None, data=None,
                  type=discord.InteractionType.component):
@@ -167,7 +197,7 @@ class FakeInteraction:
         self.guild = None
         self.guild_id = None
         self._state = SimpleNamespace(_modal_store=world.modal_store)
-        self.client = SimpleNamespace(dispatch=lambda *args: None)
+        self.client = world.client
         self.created = asyncio.get_running_loop().time()
 
     def age(self) -> float:
@@ -211,6 +241,9 @@ class FakeDiscord:
         self.modal_store = ModalStore(state=None)
         self.messages: list[ChatMessage] = []
         self.popups = []
+        self.client = FakeClient(self)
+        self.dms = []             # DMs the bot sent
+        self.closed_dms = set()   # users who don't accept DMs
 
     def new_message(self, ephemeral=True) -> ChatMessage:
         msg = ChatMessage(self, ephemeral)

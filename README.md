@@ -128,8 +128,9 @@ Under the reminder:
 
 Anyone can snooze: when someone else than the author does, the copy is
 theirs and comes to their DMs (*Tomorrow 9:00* then uses their own
-timezone). Only the author can skip. The author, the member it is for and
-members with **Manage Messages** can delete.
+timezone). Only the author can skip. The author, the member it is for, the
+members it mentions and members with **Manage Messages** can delete; when
+someone else deletes it, the author gets a DM saying who did.
 
 The buttons keep working after a restart of the bot: for 7 days on a
 one-time reminder, as long as it exists on a repeating one.
@@ -164,8 +165,9 @@ menu below the list to:
 On a server, the buttons under the list switch what it shows:
 
 * **My reminders**: the ones you created;
-* **For me**: the ones other members created for you with `/remind`. You
-  can delete them, not edit them;
+* **For me**: the ones other members created for you with `/remind`, or
+  that mention you. You can delete them (their author gets a DM), not edit
+  them;
 * **Whole server**: all the reminders of the server, with their author. Only
   for members with the **Manage Messages** permission, who can delete them
   (and edit only their own).

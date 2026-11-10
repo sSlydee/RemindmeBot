@@ -25,6 +25,7 @@ import lib.timeutil as timeutil
 from lib.Connector import Connector
 from lib.Reminder import Reminder, IntervalReminder
 import util.interaction
+import util.notices
 from util.reminderInteraction import ReportErrors
 
 log = logging.getLogger('Remindme.Buttons')
@@ -192,7 +193,8 @@ async def _delete(interaction: discord.Interaction, interval: IntervalReminder):
     user = interaction.user
     if not lib.permissions.can_delete_reminder(interval, user):
         await interaction.response.send_message(
-            'Only the author of this reminder, the member it is for, or a moderator can delete it.', ephemeral=True)
+            'Only the author of this reminder, the members it is for or mentions, or a moderator can delete it.',
+            ephemeral=True)
         return
     Connector.delete_interval(interval._id)
     if user.id == interval.author:
@@ -203,6 +205,7 @@ async def _delete(interaction: discord.Interaction, interval: IntervalReminder):
     await interaction.response.edit_message(
         embed=discord.Embed(title='Deleted Reminder', description=f'The reminder was deleted by {by}', color=0x409fe2),
         view=delivered_view(interval, deleted=True))
+    await util.notices.tell_author_deleted(interaction.client, interval, user)
 
 
 class SnoozeModal(ReportErrors, discord.ui.Modal):
