@@ -23,7 +23,7 @@ class SettingsView(util.interaction.CustomView):
         # server settings need 'Manage Server' (administrators have it)
         self.forbidden = not lib.permissions.can_change_settings(author)
 
-        if scope.is_private or self.forbidden:
+        if self.forbidden:
             self.disable_all()
 
 
@@ -99,6 +99,12 @@ class SettingsView(util.interaction.CustomView):
             self.del_hidden.style=discord.ButtonStyle.success
             self.del_hidden.disabled=True
 
+        if self.scope.is_private:
+            # in DMs: the style of the reminders the bot sends you by DM, the rest is for servers
+            for item in (self.delete_style, self.del_timeout, self.del_never, self.del_hidden,
+                         self.delivery_label, self.deliver_channel, self.deliver_dm):
+                item.disabled = True
+
 
     def get_embed(self) -> discord.Embed:
         eb = discord.Embed(title='Remindme Settings',
@@ -107,6 +113,10 @@ class SettingsView(util.interaction.CustomView):
                             'The grayed-out buttons are the current selected options.\n\n'\
                             '**Members\' reminders**: new reminders for one member are sent in their channel, '\
                             'or by DM (in the channel if the DM fails). Reminders for a role stay in the channel.')
+
+        if self.scope.is_private:
+            eb.description = 'Your own settings: the style of the reminders the bot sends you by DM. '\
+                             'The other settings are for servers.'
 
         if self.forbidden:
             eb.color = Consts.col_err
@@ -154,13 +164,13 @@ class SettingsView(util.interaction.CustomView):
         Connector.set_reminder_type(self.scope.instance_id, Connector.ReminderType.TEXT_ONLY)
         await self.send_update_ui(interaction)
 
-    @discord.ui.button(label='Barebone Reminder', style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label='Barebone Reminders', style=discord.ButtonStyle.secondary, row=1)
     async def style_bare(self, button: discord.ui.Button, interaction: discord.Interaction):
         Connector.set_reminder_type(self.scope.instance_id, Connector.ReminderType.BAREBONE)
         await self.send_update_ui(interaction)
 
 
-    @discord.ui.button(label='Delete Creation Style', style=discord.ButtonStyle.primary, row=2)
+    @discord.ui.button(label='Creation Reply', style=discord.ButtonStyle.primary, row=2)
     async def delete_style(self, button: discord.ui.Button, interaction: discord.Interaction):
         # label only: acknowledge, or Discord reports that the bot did not respond
         await interaction.response.defer()
@@ -229,7 +239,7 @@ class SettingsModule(commands.Cog):
     ##################
 
 
-    @commands.slash_command(name='settings', description='Get an overview over all settings') 
+    @commands.slash_command(name='settings', description='Show and change the settings of this server (yours in DMs)')
     async def settings_menu_cmd(self, ctx):
         # answer Discord before reading the database
         await ctx.defer(ephemeral=True)

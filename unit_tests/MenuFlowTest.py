@@ -149,7 +149,7 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         msg = await self.open_interval_menu()
         await self.discord.click(msg, 'Add Repeating Rule')
         await self.discord.submit('every saturday')
-        self.assertEqual(msg.title, 'New Rrule')
+        self.assertEqual(msg.title, 'New Repeating Rule')
         await self.discord.click(msg, 'Confirm')
 
         self.assertEqual(msg.title, 'Add new rules')
@@ -161,7 +161,7 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         msg = await self.open_interval_menu()
         await self.discord.click(msg, 'Add Repeating Rule')
         await self.discord.submit('blah blah')
-        self.assertEqual(msg.title, 'Invalid rrule')
+        self.assertEqual(msg.title, 'Invalid rule')
         await self.discord.click(msg, 'Confirm')
         self.assertEqual(msg.title, 'Add new rules')
         self.assertEqual(self.stored_intervals(), [])
@@ -171,7 +171,7 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         msg = await self.open_interval_menu()
         await self.discord.click(msg, 'Add Repeating Rule')
         await self.discord.submit('FREQ=DAILY;UNTIL=20200101')
-        self.assertEqual(msg.title, 'Invalid rrule')
+        self.assertEqual(msg.title, 'Invalid rule')
         self.assertIn('no date in the future', msg.embed.description)
 
     async def test_pasted_rule_keeps_its_timezone(self):
@@ -179,7 +179,7 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         msg = await self.open_interval_menu()
         await self.discord.click(msg, 'Add Repeating Rule')
         await self.discord.submit('DTSTART;TZID=America/New_York:20261110T090000\nRRULE:FREQ=WEEKLY')
-        self.assertEqual(msg.title, 'New Rrule')
+        self.assertEqual(msg.title, 'New Repeating Rule')
         await self.discord.click(msg, 'Confirm')
         [interval] = self.stored_intervals()
         # 09:00 in New York is 15:00 in Paris, the rule frame
@@ -191,7 +191,7 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         msg = await self.open_interval_menu()
         await self.discord.click(msg, 'Add Repeating Rule')
         await self.discord.submit('DTSTART:20261110T090000Z\nRRULE:FREQ=WEEKLY;BYDAY=TU')
-        self.assertEqual(msg.title, 'New Rrule')
+        self.assertEqual(msg.title, 'New Repeating Rule')
         await self.discord.click(msg, 'Confirm')
         [interval] = self.stored_intervals()
         # 09:00 UTC is 10:00 in Paris, the rule frame
@@ -210,7 +210,7 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Every weekend (Sat-Sun)', [o.label for o in dropdown.options])
 
         await self.discord.choose(msg, QUICK_REPEAT, 'weekends')
-        self.assertEqual(msg.title, 'New Rrule')
+        self.assertEqual(msg.title, 'New Repeating Rule')
         await self.discord.click(msg, 'Confirm')
         [stored] = self.stored_intervals()
         self.assertIn('BYDAY=SA,SU', stored['rrules'][0])
@@ -238,7 +238,7 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         msg = await self.add_weekend_rule()
         await self.discord.click(msg, 'Add Exception Rule')
         await self.discord.submit('every day')
-        self.assertEqual(msg.title, 'Invalid rrule')
+        self.assertEqual(msg.title, 'Invalid rule')
         self.assertIn('removes every future date', msg.embed.description)
         [interval] = self.stored_intervals()
         self.assertEqual(interval['exrules'], [])
@@ -280,6 +280,15 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         await self.discord.click(msg, 'Return')
         upcoming = next(f for f in msg.embed.fields if f.name == 'Next occurrences')
         self.assertEqual(len(upcoming.value.splitlines()), 5)
+
+    async def test_rule_confirm_reads_in_words(self):
+        self.add_reminder()
+        msg = await self.open_interval_menu()
+        await self.discord.choose(msg, QUICK_REPEAT, 'weekly')
+        self.assertEqual(msg.title, 'New Repeating Rule')
+        self.assertTrue(msg.embed.description.startswith('Add **every week'), msg.embed.description)
+        self.assertIn('will be sent on the dates of this rule', msg.embed.description)
+        self.assertIn('FREQ=WEEKLY', msg.embed.description)
 
     async def test_two_menus_on_the_same_reminder(self):
         self.add_reminder()

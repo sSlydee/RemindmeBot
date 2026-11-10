@@ -200,7 +200,7 @@ class ReminderCreation(commands.Cog):
                 '\n'\
                 'Call `/help page: syntax` for more detailed information.\n'
                 
-    HELP_FOOTER = 'If you find a bug in the parser, please report it on GitHub.'
+    HELP_FOOTER = 'The time formats are on the syntax page of /help.'
 
 
     # =====================
@@ -427,13 +427,13 @@ class ReminderCreation(commands.Cog):
     # TODO: fix mentionable type, wait for lib fix
     # pinging others: moderators only by default. Admins can open it to other
     # roles in Server Settings > Integrations (/remindme stays open to all)
-    @commands.slash_command(name='remind', description='set a reminder after a certain time period',
+    @commands.slash_command(name='remind', description='Remind another member or a role (moderators by default)',
                             default_member_permissions=discord.Permissions(manage_messages=True))
     async def remind_user(self, ctx:discord.ApplicationContext,
-                        target:discord.Option((discord.Member, discord.Role), 'the user or role you want to remind', required=True),
-                        time:discord.Option(str, 'time/date when the reminder is triggered (see syntax page on /help)', required=True,
+                        target:discord.Option((discord.Member, discord.Role), 'the member or role to remind', required=True),
+                        time:discord.Option(str, 'when: in 2h, tomorrow 9:00, every friday at 7 (see /help)', required=True,
                                             autocomplete=time_autocomplete),
-                        message:discord.Option(str, 'the bot will remind you with this message', required=True,
+                        message:discord.Option(str, 'what to remind them of', required=True,
                                                max_length=MAX_MESSAGE_LEN)):
                         #channel:discord.Option((discord.TextChannel,discord.VoiceChannel), 'Show the reminder in a channel other than the current one', required=False)=None):
 
@@ -445,12 +445,12 @@ class ReminderCreation(commands.Cog):
         await self.process_reminder(ctx, ctx.author, target, time, message, channel=channel)
     
 
-    @commands.slash_command(name='remindme', description='set a reminder after a certain time period',
+    @commands.slash_command(name='remindme', description='Set a reminder for yourself',
                             **lib.permissions.EVERYWHERE)
     async def remindme(self, ctx:discord.ApplicationContext,
-                        time:discord.Option(str, 'time/date when the reminder is triggered (see syntax page on /help)', required=True,
+                        time:discord.Option(str, 'when: in 2h, tomorrow 9:00, every friday at 7 (see /help)', required=True,
                                             autocomplete=time_autocomplete),
-                        message:discord.Option(str, 'the bot will remind you with this message', required=True,
+                        message:discord.Option(str, 'what to remind you of', required=True,
                                                max_length=MAX_MESSAGE_LEN)):
                         #channel:discord.Option((discord.TextChannel,discord.VoiceChannel), 'Show the reminder in a channel other than the current one', required=False)=None):
         channel = None

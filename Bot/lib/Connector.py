@@ -152,10 +152,12 @@ class Connector:
         # keep g_id as key for backwards compatibility
         rem_json = Connector.db.settings.find_one({'g_id': str(instance_id)}, {'auto_delete': 1})
         
+        # by default only its author sees the creation reply: on a busy server,
+        # nobody else needs it in the channel
         if not rem_json:
-            return Connector.AutoDelete.TIMEOUT
+            return Connector.AutoDelete.HIDE
         else:
-            return Connector.AutoDelete[rem_json.get('auto_delete', Connector.AutoDelete.TIMEOUT.name)]
+            return Connector.AutoDelete[rem_json.get('auto_delete', Connector.AutoDelete.HIDE.name)]
         
     @staticmethod
     def get_dm_delivery(guild_id: int) -> bool:

@@ -172,7 +172,7 @@ class TimezoneModule(discord.Cog):
                                     ctx: discord.ApplicationContext, 
                                     new_timezone: discord.Option(
                                         str,
-                                        "name of new timezone name",
+                                        "the new timezone, e.g. Europe/Paris",
                                         autocomplete=get_timezone_autocomplete
                                     )):
 

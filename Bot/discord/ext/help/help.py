@@ -214,11 +214,12 @@ class Help(discord.Cog):
 
     @staticmethod
     def invite_permissions(permissions: discord.Permissions):
+        """None: no 'Invite Me' button"""
         if Help.is_cog_scope:
             Help.permissions = permissions
         else:
             Help.cog_class.permissions = permissions
-        log.debug(f'set invite permissions to {permissions.value}')
+        log.debug(f'set invite permissions to {permissions.value if permissions else None}')
 
 
     @staticmethod
@@ -456,7 +457,8 @@ class Help(discord.Cog):
         # permissions are always guaranteed
         if isinstance(ctx, discord.ApplicationContext):
             # this is a reaction to a command
-            await ctx.respond(embeds=[embed], view=view)
+            # only to whoever asked: the page menu is theirs, and the channel stays clean
+            await ctx.respond(embeds=[embed], view=view, ephemeral=True)
         elif isinstance(ctx, discord.Interaction):
             # button/select menu
             await ctx.response.edit_message(embeds=[embed], view=view)

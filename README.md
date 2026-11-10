@@ -135,7 +135,8 @@ Under the reminder:
 
 Anyone can snooze: when someone else than the author does, the copy is
 theirs and comes to their DMs (*Tomorrow 9:00* then uses their own
-timezone). Only the author can skip. The author, the member it is for, the
+timezone). When the author snoozes a reminder for a role, the copy reminds
+only them, not the whole role again. Only the author can skip. The author, the member it is for, the
 members it mentions and members with **Manage Messages** can delete; when
 someone else deletes it, the author gets a DM saying who did.
 
@@ -189,13 +190,14 @@ suggested as you type; the default is UTC). In a DM with the bot, or where only
 you installed the app, it sets your own timezone. Repeating reminders keep their
 local time when it changes.
 
-`/settings` shows the server settings:
+`/settings` shows the server settings (in a DM with the bot: your own
+reminder style, for the reminders it sends you by DM):
 
 * **Reminder style**: *Hybrid* (mention, start of the text and an embed, the
   default), *Embed-Only*, *Text-Only* or *Barebone* (mention and text only). The
   buttons under delivered reminders come with the two embed styles.
-* **Creation reply**: deleted after 5 minutes (the default), never deleted, or
-  only shown to its author.
+* **Creation reply**: only shown to its author (the default), deleted after 5
+  minutes, or never deleted.
 * **Members' reminders**: new reminders for one member are posted in their
   channel (the default) or sent by DM.
 
@@ -205,6 +207,14 @@ When the bot is removed from a server, its reminders and settings are kept 7
 days, and nothing is sent meanwhile. Added back within that time, it picks up
 where it was (the reminders missed in between are sent, marked *⏰ Sent late*);
 after that, they are deleted.
+
+### Privacy
+
+`/help` → **Privacy** tells members what the bot stores (the reminders, who
+wrote them and who they are for, the settings), who can see a reminder (its
+author, the members it is for or mentions, the moderators, the owner of the
+bot) and how long it is kept: until it is sent or deleted, then 7 days for the
+buttons; daily backups 14 days; a removed server's data 7 days.
 
 ### Limits
 
@@ -224,7 +234,7 @@ after that, they are deleted.
 | `/reminder_list` | list, edit and delete your reminders (and the ones for you, or the whole server's) |
 | `/timezone timezone` | set the timezone of the server, or your own in DMs |
 | `/settings` | reminder style, creation reply and DM delivery of the server |
-| `/help` | help pages, with the time syntax |
+| `/help` | help pages (the time syntax, privacy), only shown to you |
 
 ## Troubleshooting
 
@@ -305,8 +315,8 @@ https://discord.com/oauth2/authorize?client_id=CLIENT_ID&permissions=27487799193
 ```
 
 The permissions are View Channels, Send Messages, Send Messages in Threads,
-Embed Links and Read Message History. `/help` has an *Invite Me* button with
-the same link. Then set the server timezone with `/timezone`.
+Embed Links and Read Message History. Then set the server timezone with
+`/timezone`.
 
 ### Install on your account (optional)
 

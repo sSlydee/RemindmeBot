@@ -288,11 +288,11 @@ class EditModal(ReportErrors, discord.ui.Modal):
 
         self.prefilled_at = None
         if not isinstance(self.reminder, IntervalReminder):
-            # local time with its offset (e.g. +01:00), without microseconds
+            # its date in the server's time, written like a user would ('13 Nov 2026 18:30')
             local_at = self.reminder.at.replace(tzinfo=tz.UTC).astimezone(tz=tz.gettz(tz_str))
-            self.prefilled_at = local_at.replace(microsecond=0).isoformat()
+            self.prefilled_at = local_at.strftime('%d %b %Y %H:%M')
             self.add_item(discord.ui.InputText(
-                label='Remind at (date or ISO timestamp)',
+                label='Remind at (e.g. tomorrow 9:00, 13 Nov 18:30)',
                 value=self.prefilled_at,
                 required=True,
                 style=discord.InputTextStyle.singleline
@@ -301,7 +301,7 @@ class EditModal(ReportErrors, discord.ui.Modal):
         else:
             self.add_item(optional_input(
                 label='Remind at',
-                placeholder='Edit Intervals with `/reminder_list`',
+                placeholder='Repeating: change its dates with Edit Interval',
                 style=discord.InputTextStyle.singleline
                 )
             )
@@ -443,8 +443,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         if await self.answer_expired(interaction):
             return
 
-        action_str = 'Rrule' if mode==RuleMode.RRULE_ADD else 'Rrule exception'
-        action_modifier = '*not*' if mode==RuleMode.RRULE_EX_ADD else ''
+        action_str = 'Repeating Rule' if mode==RuleMode.RRULE_ADD else 'Exception Rule'
 
         # the rule frame is the local time of the server (of the user, in DMs)
         if isinstance(self.reminder, IntervalReminder):
@@ -463,8 +462,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
                                  'To stop the reminder, delete it instead.'
 
         if not rrule:
-            error_str = error or 'Unknown error occurred while parsing the rrule.'
-            embed = discord.Embed(title='Invalid rrule',
+            error_str = error or 'Couldn\'t read this rule.'
+            embed = discord.Embed(title='Invalid rule',
                                   color=0xff0000,
                                   description=error_str+'\nPlease try again. '\
                                               f'You can build an RRULE with an [RRULE Generator]({RRULE_GENERATOR_URL}).')
@@ -473,9 +472,10 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
         else:
             # success
+            sent = 'not be sent' if mode == RuleMode.RRULE_EX_ADD else 'be sent'
             eb = discord.Embed(title=f'New {action_str}',
-                           description='Add the rule `{:s}`?. The reminder is {:s} triggered according to this rule.'\
-                                        .format(str(rrule), action_modifier))
+                               description=f'Add **{lib.input_parser.rrule_to_english(rrule)}**? '
+                                           f'The reminder will {sent} on the dates of this rule.\n`{rrule}`')
             if preview:
                 name = 'Skipped dates' if mode == RuleMode.RRULE_EX_ADD else 'Next dates of this rule'
                 eb.add_field(name=name, value=preview, inline=False)
@@ -588,8 +588,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             localized_date = date.replace(tzinfo=tz.UTC).astimezone(tz.gettz(self.stm.tz_str))
 
             eb = discord.Embed(title=f'New {action_str}',
-                           description='Do you want to add the date `{:s}`? as a new {:s}.'\
-                                        .format(localized_date.strftime('%Y-%m-%d %H:%M %Z'), action_str))
+                               description='Add `{:s}` as a new {:s}?'\
+                                           .format(localized_date.strftime('%Y-%m-%d %H:%M %Z'), action_str.lower()))
             view = util.interaction.ConfirmDenyView(dangerous_action=False)
             if await self.open_child(interaction, view, embed=eb):
                 return
@@ -687,8 +687,7 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
         rules = self.reminder.get_rule_dicts()
 
         if self.rule_index is None:
-            descr = 'You can show more detailed information for existing rules.'\
-                            'You can aswell delete selected rules/dates'
+            descr = 'Select a rule or a date below to see it in full, or to delete it.'
         else:
             descr = rules[self.rule_index]['descr']
 

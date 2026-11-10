@@ -13,6 +13,7 @@ from discord.ext.help import Help, HelpPage
 from lib.Connector import Connector
 import lib.timeutil as timeutil
 from util.consts import Consts
+import util.privacy
 
 
 # Logging
@@ -145,10 +146,9 @@ async def on_application_command_error(ctx: discord.ApplicationContext, error: E
     await log_exception(ctx, error, error_id=err_id)
 
     def get_err_embed(error_id):
-        eb = discord.Embed(title='An unknown error has ocurred', 
-                            description='The bot crashed while execution your command and we don\'t know why\n\n'\
-                                        'If you want to help improving this bot, '\
-                                        f'please report this crash with the error code on [GitHub]({Consts.github_url}/issues)')
+        eb = discord.Embed(title='Something went wrong',
+                            description='The bot couldn\'t finish this command. The error was logged with the code '\
+                                        'below: if it keeps happening, give it to a moderator or to the owner of the bot.')
         eb.color = 0xff0000  # red
 
         eb.add_field(name='Error Code', value=str(error_id))
@@ -200,18 +200,17 @@ async def on_guild_join(guild):
 
 def config_help():
 
-    custom_footer = f'If you find a bug, please report it on [GitHub]({Consts.github_url}/issues).'
+    # members can't reach the GitHub of this fork: they ask the people running their server
+    custom_footer = 'Something looks wrong? Tell a moderator of your server.'
 
     Help.init_help(bot, auto_detect_commands=True)
 
     Help.set_default_footer(custom_footer)
-    # no direct feedback, support server, ToS or privacy notice:
-    # those of the original author's public bot don't apply to this instance
-    Help.invite_permissions(
-        # the permissions the bot actually needs (same as the README invite link)
-        discord.Permissions(view_channel=True, send_messages=True, send_messages_in_threads=True,
-                            embed_links=True, read_message_history=True)
-    )
+    # no direct feedback, support server or ToS: those of the original author's
+    # public bot don't apply to this instance. No 'Invite Me' either: the bot is
+    # private, only its owner can add it (README)
+    Help.invite_permissions(None)
+    Help.set_privacy_text(util.privacy.PRIVACY_TEXT)
     Help.set_github_url(Consts.github_url)
 
 

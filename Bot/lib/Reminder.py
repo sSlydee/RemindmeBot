@@ -336,6 +336,9 @@ class Reminder:
         else:
             author = None
             title = f'Reminder'
+        if self.title:
+            # its own title (the author shows above it)
+            title = lib.text.shorten(self.title, 256)
 
         eb = self._get_embed_body(title, author=author, tz_str=tz_str)
 
@@ -558,16 +561,16 @@ class IntervalReminder(Reminder):
         ret = []
 
         for rule in self.rrules:
-            ret.append({'label': 'Reoccurrence Rule', 'descr': lib.input_parser.rrule_to_english(rule)[0:50], 'default': False})
+            ret.append({'label': 'Repeating rule', 'descr': lib.input_parser.rrule_to_english(rule)[0:50], 'default': False})
 
         for rule in self.exrules:
-            ret.append({'label': 'Exclusion Rule', 'descr': lib.input_parser.rrule_to_english(rule)[0:50], 'default': False})
+            ret.append({'label': 'Exception rule', 'descr': lib.input_parser.rrule_to_english(rule)[0:50], 'default': False})
 
         for date in self.rdates:
-            ret.append({'label': 'Single Occurrence', 'descr': date.strftime('%Y-%m-%d %H:%M'), 'default': False})
+            ret.append({'label': 'Single date', 'descr': date.strftime('%Y-%m-%d %H:%M'), 'default': False})
 
         for date in self.exdates:
-            ret.append({'label': 'Single Exclusion', 'descr': date.strftime('%Y-%m-%d %H:%M'), 'default': False})
+            ret.append({'label': 'Exception date', 'descr': date.strftime('%Y-%m-%d %H:%M'), 'default': False})
         
         return ret
 

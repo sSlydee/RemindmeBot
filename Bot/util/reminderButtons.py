@@ -166,9 +166,17 @@ async def snooze(interaction: discord.Interaction, rem: Reminder, at, action: st
             'make sure I\'m allowed to message you.', ephemeral=True)
         return
 
+    note = ''
+    if not rem.is_for_a_member():
+        # a role or @everyone: the author wants it again, the role was reminded already
+        snoozed.target = interaction.user.id
+        snoozed.target_name = interaction.user.mention
+        snoozed.target_mention = interaction.user.mention
+        note = ' It will remind only you, not the whole role.'
+
     Connector.add_reminder(snoozed)
     await interaction.response.edit_message(view=delivered_view(rem, snoozed=action))
-    await interaction.followup.send(f'Snoozed until {when}.', ephemeral=True)
+    await interaction.followup.send(f'Snoozed until {when}.{note}', ephemeral=True)
 
 
 async def _skip(interaction: discord.Interaction, interval: IntervalReminder):
