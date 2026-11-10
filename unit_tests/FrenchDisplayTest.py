@@ -23,6 +23,8 @@ import lib.timeutil as timeutil
 from lib.Connector import Connector
 from lib.Reminder import Reminder, IntervalReminder
 import util.notices
+import util.reminderInteraction as ri
+from cogs.ReminderListing import ReminderListView
 import util.reminderButtons as buttons
 from unit_tests.CreationTest import FakeContext
 from unit_tests.fakediscord import FakeDiscord, OWNER, STRANGER
@@ -45,6 +47,12 @@ class LanguageTest(unittest.TestCase):
         self.assertEqual(i18n.tr('en', 'Saved.'), 'Saved.')
         self.assertEqual(i18n.tr('fr', 'not in the catalogue'), 'not in the catalogue')
         self.assertEqual(i18n.tr('fr', 'Snoozed until {when}.', when='X'), 'Reporté au X.')
+
+    def test_any_placeholder_name(self):
+        # 'text' and 'lang' were the names of tr's own parameters
+        self.assertEqual(i18n.tr('fr', '{text} (by {name})', text='x', name='Bob'), 'x (de Bob)')
+        self.assertEqual(i18n.tr('en', 'Couldn\'t read a date in the future from `{text}`.', text='y'),
+                         'Couldn\'t read a date in the future from `y`.')
 
     def test_dates(self):
         self.assertEqual(i18n.date_str(datetime(2026, 11, 11, 8, 0), 'fr'), 'mer. 11 nov. 08:00')
@@ -222,6 +230,97 @@ class NoticeTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn('(#general sur Test)', dm.embed.description)
         self.assertIn(f'Supprimé par <@{STRANGER}> (Bob).', dm.embed.description)
 
+
+
+@unittest.skipUnless(mongomock, 'needs mongomock')
+class MenusTest(unittest.IsolatedAsyncioTestCase):
+    """/reminder_list and its menus for a user whose Discord is in French"""
+
+    def setUp(self):
+        Connector.db = mongomock.MongoClient().reminderBot
+        Connector.set_timezone(GUILD, 'Europe/Paris')
+        self.discord = FakeDiscord()
+        self.discord.locale = 'fr'
+        ctx = SimpleNamespace(author=SimpleNamespace(id=OWNER), guild=SimpleNamespace(id=GUILD, name='Test'), bot=None,
+                              interaction=SimpleNamespace(locale='fr'))
+        self.stm = ri.STM(ctx, Connector.Scope(is_private=False, guild_id=GUILD, user_id=OWNER))
+        self.stm.tz_str = 'Europe/Paris'
+
+    def add(self):
+        rem = Reminder({'msg': 'sortir les poubelles', 'g_id': str(GUILD), 'ch_id': '2', 'ch_name': 'general',
+                        'author': str(OWNER), 'target': str(OWNER), 'target_mention': f'<@{OWNER}>'})
+        rem.created_at = timeutil.utcnow()
+        rem.at = timeutil.utcnow().replace(second=0, microsecond=0) + timedelta(days=2)
+        rem._id = Connector.add_reminder(rem)
+
+    async def open_list(self):
+        self.stm.reminders = Connector.get_scoped_reminders(self.stm.scope)
+        view = ReminderListView(self.stm)
+        return await self.discord.respond(view, embed=view.get_embed(), deferred=True)
+
+    def labels(self, msg):
+        return [item.label for item in msg.view.children if getattr(item, 'label', None)]
+
+    async def test_list(self):
+        self.add()
+        msg = await self.open_list()
+        self.assertEqual(msg.title, 'Tes rappels · Test')
+        self.assertEqual(msg.embed.footer.text, 'Page 1/1 · 1 rappel')
+        self.assertEqual(self.labels(msg), ['Mes rappels', 'Pour moi'])
+        [dropdown] = [item for item in msg.view.children if getattr(item, 'placeholder', None)]
+        self.assertEqual(dropdown.placeholder, 'Choisis un rappel à modifier')
+        self.assertRegex(dropdown.options[0].description, r'^(lun|mar|mer|jeu|ven|sam|dim)\. ')
+
+        await self.discord.click(msg, 'Pour moi')
+        self.assertEqual(msg.title, 'Rappels pour toi · Test')
+        self.assertTrue(msg.embed.description.startswith('Aucun rappel d’autres membres'))
+
+    async def test_edit_menu_and_delete(self):
+        self.add()
+        msg = await self.open_list()
+        await self.discord.choose(msg, 'Choisis un rappel à modifier', '0')
+        self.assertEqual(self.labels(msg), ['Salon', 'Répéter', 'Modifier', 'Pause', 'Passer le prochain',
+                                            'Retour', 'Supprimer'])
+        self.assertEqual(msg.title, 'Rappel')
+        self.assertIn('Date', [f.name for f in msg.embed.fields])
+
+        await self.discord.click(msg, 'Supprimer')
+        self.assertEqual(msg.title, 'Supprimer le rappel ?')
+        self.assertEqual(self.labels(msg), ['Confirmer', 'Annuler'])
+        await self.discord.click(msg, 'Confirmer')
+        self.assertEqual(Connector.db.reminders.count_documents({}), 0)
+        self.assertEqual(msg.title, 'Tes rappels · Test')
+
+    async def test_repetition_menus(self):
+        self.add()
+        msg = await self.open_list()
+        await self.discord.choose(msg, 'Choisis un rappel à modifier', '0')
+        await self.discord.click(msg, 'Répéter')
+        self.assertEqual(msg.title, 'Ajouter des règles')
+        [quick] = [item for item in msg.view.children if getattr(item, 'placeholder', None) == 'Répétition rapide...']
+        self.assertEqual([o.label for o in quick.options][:3], ['Tous les jours', 'En semaine (lun-ven)',
+                                                                'Le week-end (sam-dim)'])
+        # the options are this menu's own: another user's menu stays in English
+        english = ri.ReminderIntervalAddView(Reminder({'msg': 'x', 'author': '3', 'target': '3'}),
+                                             SimpleNamespace(ctx=SimpleNamespace(author=SimpleNamespace(id=3)), lang='en'))
+        [other] = [item for item in english.children if getattr(item, 'placeholder', None) == 'Quick repeat...']
+        self.assertEqual(other.options[0].label, 'Every day')
+        self.assertIn('Règle de répétition', self.labels(msg))
+
+        await self.discord.choose(msg, 'Répétition rapide...', 'weekly')
+        self.assertEqual(msg.title, 'Nouvelle répétition')
+        self.assertTrue(msg.embed.description.startswith('Ajouter **'))
+        self.assertEqual([f.name for f in msg.embed.fields], ['Prochaines dates de cette règle'])
+        await self.discord.click(msg, 'Confirmer')
+        await self.discord.click(msg, 'Retour')
+        self.assertEqual(self.labels(msg)[1], 'Répétition')
+        self.assertEqual(msg.title, 'Rappel répété')
+
+        await self.discord.click(msg, 'Répétition')
+        self.assertEqual(msg.title, 'Voir/supprimer les règles')
+        [rules] = [item for item in msg.view.children if getattr(item, 'placeholder', None)]
+        self.assertEqual(rules.placeholder, 'Choisis une règle ou une date')
+        self.assertEqual(rules.options[0].label, 'Règle de répétition')
 
 if __name__ == '__main__':
     unittest.main()

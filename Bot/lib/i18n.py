@@ -25,8 +25,11 @@ def lang_of(obj) -> str:
     return FR if isinstance(locale, str) and locale.lower().startswith('fr') else EN
 
 
-def tr(lang: str, text: str, **kwargs) -> str:
-    """text in that language (English when there is no translation)"""
+def tr(lang: str, text: str, /, **kwargs) -> str:
+    """text in that language (English when there is no translation)
+
+    lang and text are positional only: any placeholder name can be passed (text=..., lang=...)
+    """
     if lang == FR:
         text = FR_TEXTS.get(text, text)
     return text.format(**kwargs) if kwargs else text
@@ -192,6 +195,168 @@ FR_TEXTS = {
     'That is a repetition, a snooze needs one date.': 'C’est une répétition : un report demande une seule date.',
     'Couldn\'t read a date in the future from `{text}`.': 'Je ne trouve pas de date à venir dans `{text}`.',
     'Something went wrong, sorry. The error was logged.': 'Une erreur est survenue, désolé. Elle a été notée.',
+
+    # ---------- menus (util.interaction) ----------
+    'Only the person who opened this menu can use it.': 'Seule la personne qui a ouvert ce menu peut l’utiliser.',
+    'Menu closed': 'Menu fermé',
+    'This reminder was changed in another menu, delivered or deleted meanwhile. Open `/reminder_list` again.':
+        'Ce rappel a été modifié dans un autre menu, envoyé ou supprimé entre-temps. Rouvre `/reminder_list`.',
+    'Saved. ': 'Enregistré. ',
+    'This menu has expired, open it again with `/reminder_list`.': 'Ce menu a expiré, rouvre-le avec `/reminder_list`.',
+    'Confirm': 'Confirmer',
+    'Confirmed': 'Confirmé',
+    'Abort': 'Annuler',
+    'Aborted': 'Annulé',
+
+    # ---------- /reminder_list ----------
+    'My reminders': 'Mes rappels',
+    'For me': 'Pour moi',
+    'Whole server': 'Tout le serveur',
+    'No pending reminders. Create one with `/remindme`.': 'Aucun rappel en attente. Crée-en un avec `/remindme`.',
+    'No reminders from other members for you. When someone reminds you with `/remind`, '
+    'or mentions you in a reminder, you can delete it here.':
+        'Aucun rappel d’autres membres pour toi. Quand quelqu’un te rappelle quelque chose avec `/remind`, '
+        'ou te mentionne dans un rappel, tu peux le supprimer ici.',
+    'No pending reminders on this server.': 'Aucun rappel en attente sur ce serveur.',
+    'a former member': 'un ancien membre',
+    'you': 'toi',
+    'another member': 'un autre membre',
+    'Your private reminders': 'Tes rappels privés',
+    'Reminders for you · {guild}': 'Rappels pour toi · {guild}',
+    'All reminders · {guild}': 'Tous les rappels · {guild}',
+    'Your reminders · {guild}': 'Tes rappels · {guild}',
+    'from {name}': 'de {name}',
+    'for {name}': 'pour {name}',
+    'from you': 'de toi',
+    '⏸️ paused': '⏸️ en pause',
+    'paused': 'en pause',
+    'no next date': 'pas de prochaine date',
+    'DM': 'MP',
+    '*empty reminder*': '*rappel vide*',
+    'Select a reminder to edit': 'Choisis un rappel à modifier',
+    'custom repetition': 'répétition personnalisée',
+    ' (+{n} more)': ' (+{n} autres)',
+    '{n} dates': '{n} dates',
+    ', 1 exception': ', 1 exception',
+    ', {n} exceptions': ', {n} exceptions',
+    'Page {page}/{pages} · 1 reminder': 'Page {page}/{pages} · 1 rappel',
+    'Page {page}/{pages} · {n} reminders': 'Page {page}/{pages} · {n} rappels',
+
+    # ---------- edit menu, channel ----------
+    'Edit Channel': 'Salon',
+    'Resume': 'Reprendre',
+    'Pause': 'Pause',
+    'Return': 'Retour',
+    'Delete': 'Supprimer',
+    'Cancel': 'Annuler',
+    'Skip the next date?': 'Sauter la prochaine date ?',
+    'The reminder won\'t be sent on {date}.\nThis adds an exclusion date, which you can delete in `Edit Interval`.':
+        'Le rappel ne sera pas envoyé le {date}.\nÇa ajoute une date à sauter, que tu peux supprimer dans `Répétition`.',
+    'Delete Reminder?': 'Supprimer le rappel ?',
+    'Select the channel for this reminder': 'Choisis le salon de ce rappel',
+    'Send in the channel': 'Envoyer dans le salon',
+    'Send by DM': 'Envoyer en MP',
+    'Select a new channel': 'Choisis un nouveau salon',
+    'by DM (in its channel if the DM fails)': 'par MP (dans son salon si le MP échoue)',
+    'Sent': 'Envoi',
+    'Failed to edit Reminder': 'Impossible de modifier le rappel',
+    'Couldn\'t resolve the selected channel. Ensure that I have sufficient permissions.':
+        'Salon introuvable. Vérifie que j’ai les permissions nécessaires.',
+    'Failed to set new Channel': 'Impossible de changer de salon',
+    'I am missing permissions to send messages in `{channel}`': 'Il me manque la permission d’écrire dans `{channel}`',
+    'You can\'t send messages in `{channel}` yourself': 'Tu ne peux pas écrire toi-même dans `{channel}`',
+    'New Notification Channel': 'Nouveau salon',
+    'Do you want to deliver this reminder to `{channel}`?': 'Envoyer ce rappel dans `{channel}` ?',
+
+    # ---------- the Edit popup ----------
+    'Title': 'Titre',
+    '(optional)': '(facultatif)',
+    'Content': 'Contenu',
+    'Image Url (optional)': 'Lien d’image (facultatif)',
+    'Remind at (e.g. tomorrow 9:00, 13 Nov 18:30)': 'Date (ex. demain 9h, 13 nov 18h30)',
+    'Remind at': 'Date',
+    'Repeating: change its dates with Edit Interval': 'Rappel répété : change ses dates avec Répétition',
+    'Didn\'t change the image: `{url}` is not a valid URL.\n': 'Image inchangée : `{url}` n’est pas un lien valide.\n',
+    'Didn\'t change the reminder date: couldn\'t read `{text}`.\n': 'Date inchangée : impossible de lire `{text}`.\n',
+    'Repeating dates must be added with `Set Interval`.\n': 'Les répétitions s’ajoutent avec `Répéter`.\n',
+    'Didn\'t change the reminder date: it must be in the future.\n': 'Date inchangée : elle doit être dans le futur.\n',
+    'The `Interval` attribute must be edited with `Edit Interval`.\n': 'Les répétitions se modifient avec `Répétition`.\n',
+    'Reminder updated': 'Rappel modifié',
+
+    # ---------- repetition menus ----------
+    'Add new rules': 'Ajouter des règles',
+    'Pick a quick repetition below, or add a rule written like '
+    '`every friday at 7`, `every 2 weeks`, `every weekday` or `every weekend`.\n'
+    'RRULEs work too (e.g. `FREQ=MONTHLY;BYDAY=1MO`): you can use an [RRULE Generator]({url}).':
+        'Choisis une répétition rapide ci-dessous, ou ajoute une règle écrite comme `tous les vendredis à 7h`, '
+        '`toutes les 2 semaines`, `en semaine` ou `tous les week-ends`.\n'
+        'Les RRULE marchent aussi (ex. `FREQ=MONTHLY;BYDAY=1MO`) : tu peux utiliser un [générateur de RRULE]({url}).',
+    'Quick repeat...': 'Répétition rapide...',
+    'Every day': 'Tous les jours',
+    'Every weekday (Mon-Fri)': 'En semaine (lun-ven)',
+    'Every weekend (Sat-Sun)': 'Le week-end (sam-dim)',
+    'Every week': 'Toutes les semaines',
+    'Every 2 weeks': 'Toutes les 2 semaines',
+    'Every month': 'Tous les mois',
+    'Every year': 'Tous les ans',
+    'Add Repeating Rule': 'Règle de répétition',
+    'Add Exception Rule': 'Règle d’exception',
+    'Add Single Date': 'Date en plus',
+    'Add Exception Date': 'Date à sauter',
+    'This rule has no date in the future.': 'Cette règle n’a aucune date à venir.',
+    'This exception removes every future date of the reminder. To stop the reminder, delete it instead.':
+        'Cette exception supprime toutes les dates à venir du rappel. Pour l’arrêter, supprime-le plutôt.',
+    'Couldn\'t read this rule.': 'Impossible de lire cette règle.',
+    'Invalid rule': 'Règle invalide',
+    '\nPlease try again. You can build an RRULE with an [RRULE Generator]({url}).':
+        '\nRéessaie. Tu peux construire une RRULE avec un [générateur de RRULE]({url}).',
+    'New Repeating Rule': 'Nouvelle répétition',
+    'New Exception Rule': 'Nouvelle exception',
+    'Add **{rule}**? The reminder will be sent on the dates of this rule.':
+        'Ajouter **{rule}** ? Le rappel sera envoyé aux dates de cette règle.',
+    'Add **{rule}**? The reminder will not be sent on the dates of this rule.':
+        'Ajouter **{rule}** ? Le rappel ne sera pas envoyé aux dates de cette règle.',
+    'Skipped dates': 'Dates sautées',
+    'Next dates of this rule': 'Prochaines dates de cette règle',
+    'This is a repetition, not a single date: use `Add Repeating Rule` for it.':
+        'C’est une répétition, pas une date : utilise `Règle de répétition`.',
+    'Couldn\'t read a date from `{text}`.': 'Impossible de lire une date dans `{text}`.',
+    'Only dates in the future are allowed.': 'Seules les dates à venir sont acceptées.',
+    'Invalid input date': 'Date invalide',
+    '\nPlease try again.': '\nRéessaie.',
+    'New single date': 'Nouvelle date',
+    'New date exception': 'Nouvelle date à sauter',
+    'Add `{date}` as a new single date?': 'Ajouter la date `{date}` ?',
+    'Add `{date}` as a new date exception?': 'Sauter la date `{date}` ?',
+    'Repeat, e.g. "every friday at 7" or an RRULE': 'Répétition, ex. « tous les vendredis à 7h »',
+    'Skip, e.g. "every saturday" or an RRULE': 'À sauter, ex. « tous les samedis »',
+    'Write the repetition in plain words (`every friday at 7`, `every 2 weeks`, `every weekday`, `every weekend`) '
+    'or paste an RRULE.\nBuild an RRULE with the [RRULE Generator]({url}).':
+        'Écris la répétition en mots (`tous les vendredis à 7h`, `toutes les 2 semaines`, `en semaine`, '
+        '`tous les week-ends`) ou colle une RRULE.\nConstruis une RRULE avec le [générateur de RRULE]({url}).',
+    'The reminder will **not** be sent on the dates of this rule. Write it in plain words (`every saturday`) '
+    'or paste an RRULE.\nBuild an RRULE with the [RRULE Generator]({url}).':
+        'Le rappel ne sera **pas** envoyé aux dates de cette règle. Écris-la en mots (`tous les samedis`) '
+        'ou colle une RRULE.\nConstruis une RRULE avec le [générateur de RRULE]({url}).',
+    'Enter a new date (fuzzy or iso)': 'Nouvelle date (ex. demain 9h)',
+    'Add a single occurrence date': 'Ajouter une date',
+    'Enter an exclusion date (fuzzy or iso)': 'Date à sauter (ex. vendredi 9h)',
+    'Add a single exclusion date': 'Ajouter une date à sauter',
+    'Select a rule or a date below to see it in full, or to delete it.':
+        'Choisis une règle ou une date ci-dessous pour la voir en entier, ou la supprimer.',
+    'Show/Delete existing rules': 'Voir/supprimer les règles',
+    'Select a rule/date for more info': 'Choisis une règle ou une date',
+    'Add New Rule': 'Ajouter une règle',
+    'Delete Selected': 'Supprimer la sélection',
+    'Danger': 'Attention',
+    'Are you sure to delete the rule `{rule}`?': 'Supprimer vraiment la règle `{rule}` ?',
+    'Orphan warning': 'Plus aucune date',
+    'The reminder has no further events pending. It will be deleted soon, if no new rule is added':
+        'Le rappel n’a plus aucune date à venir. Il sera bientôt supprimé si aucune règle n’est ajoutée.',
+    'Repeating rule': 'Règle de répétition',
+    'Exception rule': 'Règle d’exception',
+    'Single date': 'Date en plus',
+    'Exception date': 'Date à sauter',
 
     # ---------- notices ----------
     'Your reminder was deleted': 'Ton rappel a été supprimé',

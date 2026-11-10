@@ -8,7 +8,7 @@ import logging
 
 import util.interaction
 import util.notices
-from lib.i18n import lang_of, tr
+from lib.i18n import lang_of, tr, hints
 from util.consts import Consts
 import util.verboseErrors
 import lib.input_parser
@@ -72,24 +72,27 @@ class ReminderChannelEdit(util.interaction.CustomView):
         # by DM: for one member of a server (a role can't get a DM)
         self.dm_btn.label = 'Send in the channel' if reminder.by_dm else 'Send by DM'
         self.dm_btn.disabled = not reminder.g_id or not reminder.is_for_a_member()
+        self.set_lang(stm.lang)
 
 
     def get_embed(self) -> discord.Embed:
-        eb = self.reminder.get_info_embed(self.stm.tz_str)
-        eb.title = 'Select a new channel'
+        lang = self.stm.lang
+        eb = self.reminder.get_info_embed(self.stm.tz_str, lang=lang)
+        eb.title = tr(lang, 'Select a new channel')
         if self.reminder.by_dm:
-            where = 'by DM (in its channel if the DM fails)'
+            where = tr(lang, 'by DM (in its channel if the DM fails)')
         else:
-            where = f'<#{self.reminder.ch_id}>' if self.reminder.ch_id else 'by DM'
-        eb.add_field(name='Sent', value=where, inline=False)
+            where = f'<#{self.reminder.ch_id}>' if self.reminder.ch_id else tr(lang, 'by DM')
+        eb.add_field(name=tr(lang, 'Sent'), value=where, inline=False)
         return eb
 
 
     async def _check_channel(self, new_ch) -> discord.Embed:
         """error embed if the reminder can't be delivered into new_ch, None if it can"""
+        lang = self.stm.lang
         if not new_ch:
-            return discord.Embed(title='Failed to edit Reminder',
-                                 description='Couldn\'t resolve the selected channel. Ensure that I have sufficient permissions.',
+            return discord.Embed(title=tr(lang, 'Failed to edit Reminder'),
+                                 description=tr(lang, 'Couldn\'t resolve the selected channel. Ensure that I have sufficient permissions.'),
                                  color=Consts.col_err)
 
         r_type = Connector.get_reminder_type(self.stm.scope.instance_id)
@@ -100,8 +103,8 @@ class ReminderChannelEdit(util.interaction.CustomView):
             has_perms = util.verboseErrors.VerboseErrors.can_send_messages(new_ch)
 
         if not has_perms:
-            return discord.Embed(title='Failed to set new Channel',
-                                 description=f'I am missing permissions to send messages in `{new_ch.name}`',
+            return discord.Embed(title=tr(lang, 'Failed to set new Channel'),
+                                 description=tr(lang, 'I am missing permissions to send messages in `{channel}`', channel=new_ch.name),
                                  color=Consts.col_err)
 
         # nor a channel the author can't post in
@@ -110,8 +113,8 @@ class ReminderChannelEdit(util.interaction.CustomView):
             perms = new_ch.permissions_for(author)
             can_post = perms.send_messages_in_threads if isinstance(new_ch, discord.Thread) else perms.send_messages
             if not (perms.view_channel and can_post):
-                return discord.Embed(title='Failed to set new Channel',
-                                     description=f'You can\'t send messages in `{new_ch.name}` yourself',
+                return discord.Embed(title=tr(lang, 'Failed to set new Channel'),
+                                     description=tr(lang, 'You can\'t send messages in `{channel}` yourself', channel=new_ch.name),
                                      color=Consts.col_err)
         return None
 
@@ -138,8 +141,8 @@ class ReminderChannelEdit(util.interaction.CustomView):
             return
 
         view = util.interaction.ConfirmDenyView()
-        eb = discord.Embed(title='New Notification Channel',
-                           description=f'Do you want to deliver this reminder to `{new_ch.name}`?')
+        eb = discord.Embed(title=tr(self.stm.lang, 'New Notification Channel'),
+                           description=tr(self.stm.lang, 'Do you want to deliver this reminder to `{channel}`?', channel=new_ch.name))
         if await self.open_child(interaction, view, embed=eb):
             return
 
@@ -258,25 +261,26 @@ def optional_input(**kwargs) -> discord.ui.InputText:
 
 
 class EditModal(ReportErrors, discord.ui.Modal):
-    def __init__(self, reminder: Reminder, tz_str:str, custom_callback, *args, **kwargs):
+    def __init__(self, reminder: Reminder, tz_str:str, custom_callback, *args, lang='en', **kwargs):
         kwargs.setdefault('timeout', util.interaction.POPUP_TIMEOUT)
         super().__init__(*args, **kwargs)
         self.value = None
         self.custom_callback = custom_callback
         self.reminder = reminder
         self.tz = tz_str
+        self.lang = lang
 
 
         self.add_item(
             optional_input(
-                label='Title',
-                placeholder='(optional)',
+                label=tr(lang, 'Title'),
+                placeholder=tr(lang, '(optional)'),
                 value=self.reminder.title,
                 style=discord.InputTextStyle.singleline
             )
         )
         self.add_item(discord.ui.InputText(
-                label='Content',
+                label=tr(lang, 'Content'),
                 value=self.reminder.msg,
                 required=True,
                 max_length=4000,
@@ -284,7 +288,7 @@ class EditModal(ReportErrors, discord.ui.Modal):
             )
         )
         self.add_item(optional_input(
-            label='Image Url (optional)',
+            label=tr(lang, 'Image Url (optional)'),
             value=self.reminder.img_url,
             style=discord.InputTextStyle.singleline
         ))
@@ -295,7 +299,7 @@ class EditModal(ReportErrors, discord.ui.Modal):
             local_at = self.reminder.at.replace(tzinfo=tz.UTC).astimezone(tz=tz.gettz(tz_str))
             self.prefilled_at = local_at.strftime('%d %b %Y %H:%M')
             self.add_item(discord.ui.InputText(
-                label='Remind at (e.g. tomorrow 9:00, 13 Nov 18:30)',
+                label=tr(lang, 'Remind at (e.g. tomorrow 9:00, 13 Nov 18:30)'),
                 value=self.prefilled_at,
                 required=True,
                 style=discord.InputTextStyle.singleline
@@ -303,8 +307,8 @@ class EditModal(ReportErrors, discord.ui.Modal):
             )
         else:
             self.add_item(optional_input(
-                label='Remind at',
-                placeholder='Repeating: change its dates with Edit Interval',
+                label=tr(lang, 'Remind at'),
+                placeholder=tr(lang, 'Repeating: change its dates with Edit Interval'),
                 style=discord.InputTextStyle.singleline
                 )
             )
@@ -345,7 +349,7 @@ class EditModal(ReportErrors, discord.ui.Modal):
                     self.reminder.img_url = new_imgurl
                     Connector.set_reminder_img_url(self.reminder._id, self.reminder.img_url)
                 else:
-                    info += f'Didn\'t change the image: `{new_imgurl[:100]}` is not a valid URL.\n'
+                    info += tr(self.lang, 'Didn\'t change the image: `{url}` is not a valid URL.\n', url=new_imgurl[:100])
 
 
         if not isinstance(self.reminder, IntervalReminder):
@@ -359,26 +363,26 @@ class EditModal(ReportErrors, discord.ui.Modal):
                 parsed_at, parse_info = lib.input_parser.parse(new_at, utcnow, self.tz)
 
                 if not isinstance(parsed_at, datetime) or parsed_at == utcnow:
-                    info += f'Didn\'t change the reminder date: couldn\'t read `{new_at[:100]}`.\n'
+                    info += tr(self.lang, 'Didn\'t change the reminder date: couldn\'t read `{text}`.\n', text=new_at[:100])
                     if isinstance(parsed_at, str):
-                        info += 'Repeating dates must be added with `Set Interval`.\n'
+                        info += tr(self.lang, 'Repeating dates must be added with `Set Interval`.\n')
                     elif parse_info:
-                        info += f'```{parse_info}```\n'
+                        info += f'```{hints(self.lang, parse_info)}```\n'
                 elif parsed_at <= utcnow:
-                    info += 'Didn\'t change the reminder date: it must be in the future.\n'
+                    info += tr(self.lang, 'Didn\'t change the reminder date: it must be in the future.\n')
                 else:
                     self.reminder.at = parsed_at
                     Connector.update_reminder_at(self.reminder)
         else:
             if new_at:
-                info += 'The `Interval` attribute must be edited with `Edit Interval`.\n'
+                info += tr(self.lang, 'The `Interval` attribute must be edited with `Edit Interval`.\n')
 
 
         if self.custom_callback:
             # the menu shows the result, info is what wasn't changed
             await self.custom_callback(interaction, info)
         else:
-            await interaction.response.send_message(info or 'Reminder updated', ephemeral=True)
+            await interaction.response.send_message(info or tr(self.lang, 'Reminder updated'), ephemeral=True)
 
         self.stop()
 
@@ -403,6 +407,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         self.reminder = reminder
         self.stm = stm
         self.update_btn_activation()
+        self.set_lang(stm.lang)
 
     # one-click repetitions, based on the date and time of the reminder
     QUICK_RULES = {
@@ -417,11 +422,11 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
     def get_embed(self) -> discord.Embed:
         return discord.Embed(
-            title='Add new rules',
-            description='Pick a quick repetition below, or add a rule written like '\
-                        '`every friday at 7`, `every 2 weeks`, `every weekday` or `every weekend`.\n'\
-                        'RRULEs work too (e.g. `FREQ=MONTHLY;BYDAY=1MO`): '\
-                        f'you can use an [RRULE Generator]({RRULE_GENERATOR_URL}).'
+            title=tr(self.stm.lang, 'Add new rules'),
+            description=tr(self.stm.lang, 'Pick a quick repetition below, or add a rule written like '
+                                          '`every friday at 7`, `every 2 weeks`, `every weekday` or `every weekend`.\n'
+                                          'RRULEs work too (e.g. `FREQ=MONTHLY;BYDAY=1MO`): '
+                                          'you can use an [RRULE Generator]({url}).', url=RRULE_GENERATOR_URL)
         )
 
     def update_btn_activation(self):
@@ -446,6 +451,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         if await self.answer_expired(interaction):
             return
 
+        lang = self.stm.lang
         action_str = 'Repeating Rule' if mode==RuleMode.RRULE_ADD else 'Exception Rule'
 
         # the rule frame is the local time of the server (of the user, in DMs)
@@ -459,28 +465,30 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         preview = self._preview(rrule, rule_tz) if rrule else ''
         if rrule and mode == RuleMode.RRULE_ADD and not preview:
             # e.g. an UNTIL in the past
-            rrule, error = None, 'This rule has no date in the future.'
+            rrule, error = None, tr(lang, 'This rule has no date in the future.')
         if rrule and mode == RuleMode.RRULE_EX_ADD and not self._date_left(dtstart, rule_tz, exrule=str(rrule)):
-            rrule, error = None, 'This exception removes every future date of the reminder. '\
-                                 'To stop the reminder, delete it instead.'
+            rrule, error = None, tr(lang, 'This exception removes every future date of the reminder. '
+                                          'To stop the reminder, delete it instead.')
 
         if not rrule:
-            error_str = error or 'Couldn\'t read this rule.'
-            embed = discord.Embed(title='Invalid rule',
+            error_str = hints(lang, error) if error else tr(lang, 'Couldn\'t read this rule.')
+            embed = discord.Embed(title=tr(lang, 'Invalid rule'),
                                   color=0xff0000,
-                                  description=error_str+'\nPlease try again. '\
-                                              f'You can build an RRULE with an [RRULE Generator]({RRULE_GENERATOR_URL}).')
+                                  description=error_str + tr(lang, '\nPlease try again. You can build an RRULE with an '
+                                                                   '[RRULE Generator]({url}).', url=RRULE_GENERATOR_URL))
             if await self.open_child(interaction, util.interaction.AckView(), embed=embed):
                 return
 
         else:
             # success
-            sent = 'not be sent' if mode == RuleMode.RRULE_EX_ADD else 'be sent'
-            eb = discord.Embed(title=f'New {action_str}',
-                               description=f'Add **{lib.input_parser.rrule_to_english(rrule)}**? '
-                                           f'The reminder will {sent} on the dates of this rule.\n`{rrule}`')
+            if mode == RuleMode.RRULE_EX_ADD:
+                question = 'Add **{rule}**? The reminder will not be sent on the dates of this rule.'
+            else:
+                question = 'Add **{rule}**? The reminder will be sent on the dates of this rule.'
+            eb = discord.Embed(title=tr(lang, f'New {action_str}'),
+                               description=tr(lang, question, rule=lib.input_parser.rrule_to_english(rrule)) + f'\n`{rrule}`')
             if preview:
-                name = 'Skipped dates' if mode == RuleMode.RRULE_EX_ADD else 'Next dates of this rule'
+                name = tr(lang, 'Skipped dates' if mode == RuleMode.RRULE_EX_ADD else 'Next dates of this rule')
                 eb.add_field(name=name, value=preview, inline=False)
             view = util.interaction.ConfirmDenyView(dangerous_action=False)
             if await self.open_child(interaction, view, embed=eb):
@@ -556,15 +564,15 @@ class ReminderIntervalAddView(util.interaction.CustomView):
 
 
     @staticmethod
-    def _date_error(date, info: str, user_input: str, utcnow: datetime) -> str:
+    def _date_error(date, info: str, user_input: str, utcnow: datetime, lang='en') -> str:
         """why a parsed single date can't be used, None if it can"""
         if isinstance(date, str):
-            return 'This is a repetition, not a single date: use `Add Repeating Rule` for it.'
+            return tr(lang, 'This is a repetition, not a single date: use `Add Repeating Rule` for it.')
         if not isinstance(date, datetime) or date == utcnow:
             # the parser returns 'now' when it can't read the input
-            return info or f'Couldn\'t read a date from `{(user_input or "")[:100]}`.'
+            return hints(lang, info) or tr(lang, 'Couldn\'t read a date from `{text}`.', text=(user_input or "")[:100])
         if date <= utcnow:
-            return 'Only dates in the future are allowed.'
+            return tr(lang, 'Only dates in the future are allowed.')
         return None
 
 
@@ -573,16 +581,17 @@ class ReminderIntervalAddView(util.interaction.CustomView):
         if await self.answer_expired(interaction):
             return
 
+        lang = self.stm.lang
         action_str = 'single date' if mode==RuleMode.DATE_ADD else 'date exception'
 
         utcnow = timeutil.utcnow()
         date, info = lib.input_parser.parse(user_input, utcnow, self.stm.tz_str)
-        error_str = self._date_error(date, info, user_input, utcnow)
+        error_str = self._date_error(date, info, user_input, utcnow, lang)
 
         if error_str:
-            embed = discord.Embed(title='Invalid input date',
+            embed = discord.Embed(title=tr(lang, 'Invalid input date'),
                                   color=0xff0000,
-                                  description=error_str+'\nPlease try again.')
+                                  description=error_str + tr(lang, '\nPlease try again.'))
             if await self.open_child(interaction, util.interaction.AckView(), embed=embed):
                 return
 
@@ -590,9 +599,9 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             # success
             localized_date = date.replace(tzinfo=tz.UTC).astimezone(tz.gettz(self.stm.tz_str))
 
-            eb = discord.Embed(title=f'New {action_str}',
-                               description='Add `{:s}` as a new {:s}?'\
-                                           .format(localized_date.strftime('%Y-%m-%d %H:%M %Z'), action_str.lower()))
+            eb = discord.Embed(title=tr(lang, f'New {action_str}'),
+                               description=tr(lang, f'Add `{{date}}` as a new {action_str}?',
+                                              date=localized_date.strftime('%Y-%m-%d %H:%M %Z')))
             view = util.interaction.ConfirmDenyView(dangerous_action=False)
             if await self.open_child(interaction, view, embed=eb):
                 return
@@ -617,13 +626,14 @@ class ReminderIntervalAddView(util.interaction.CustomView):
     @discord.ui.button(label='Add Repeating Rule', style=discord.ButtonStyle.secondary, row=1)
     async def add_rrule(self, button:  discord.ui.Button, interaction: discord.Interaction):
 
-        modal = RuleModal(field='Repeat, e.g. "every friday at 7" or an RRULE',
-                            title='Add Repeating Rule',
+        lang = self.stm.lang
+        modal = RuleModal(field=tr(lang, 'Repeat, e.g. "every friday at 7" or an RRULE'),
+                            title=tr(lang, 'Add Repeating Rule'),
                             custom_callback=self.rrule_callback,
                             mode=RuleMode.RRULE_ADD,
-                            help_text='Write the repetition in plain words (`every friday at 7`, `every 2 weeks`, '\
-                                      '`every weekday`, `every weekend`) or paste an RRULE.\n'\
-                                      f'Build an RRULE with the [RRULE Generator]({RRULE_GENERATOR_URL}).')
+                            help_text=tr(lang, 'Write the repetition in plain words (`every friday at 7`, `every 2 weeks`, '
+                                               '`every weekday`, `every weekend`) or paste an RRULE.\n'
+                                               'Build an RRULE with the [RRULE Generator]({url}).', url=RRULE_GENERATOR_URL))
         await util.interaction.open_popup(interaction, modal)
 
 
@@ -631,13 +641,14 @@ class ReminderIntervalAddView(util.interaction.CustomView):
     @discord.ui.button(label='Add Exception Rule', style=discord.ButtonStyle.secondary, row=1)
     async def add_rrule_ex(self, button:  discord.ui.Button, interaction: discord.Interaction):
 
-        modal = RuleModal(field='Skip, e.g. "every saturday" or an RRULE',
-                            title='Add Exception Rule',
+        lang = self.stm.lang
+        modal = RuleModal(field=tr(lang, 'Skip, e.g. "every saturday" or an RRULE'),
+                            title=tr(lang, 'Add Exception Rule'),
                             custom_callback=self.rrule_callback,
                             mode=RuleMode.RRULE_EX_ADD,
-                            help_text='The reminder will **not** be sent on the dates of this rule. '\
-                                      'Write it in plain words (`every saturday`) or paste an RRULE.\n'\
-                                      f'Build an RRULE with the [RRULE Generator]({RRULE_GENERATOR_URL}).')
+                            help_text=tr(lang, 'The reminder will **not** be sent on the dates of this rule. '
+                                               'Write it in plain words (`every saturday`) or paste an RRULE.\n'
+                                               'Build an RRULE with the [RRULE Generator]({url}).', url=RRULE_GENERATOR_URL))
         await util.interaction.open_popup(interaction, modal)
 
 
@@ -645,8 +656,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
     @discord.ui.button(label='Add Single Date', style=discord.ButtonStyle.secondary, row=2)
     async def add_single(self, button:  discord.ui.Button, interaction: discord.Interaction):
 
-        modal = RuleModal(field='Enter a new date (fuzzy or iso)',
-                            title='Add a single occurrence date',
+        modal = RuleModal(field=tr(self.stm.lang, 'Enter a new date (fuzzy or iso)'),
+                            title=tr(self.stm.lang, 'Add a single occurrence date'),
                             custom_callback=self.date_callback,
                             mode=RuleMode.DATE_ADD)
         await util.interaction.open_popup(interaction, modal)
@@ -655,8 +666,8 @@ class ReminderIntervalAddView(util.interaction.CustomView):
     @discord.ui.button(label='Add Exception Date', style=discord.ButtonStyle.secondary, row=2)
     async def add_single_ex(self, button:  discord.ui.Button, interaction: discord.Interaction):
 
-        modal = RuleModal(field='Enter an exclusion date (fuzzy or iso)',
-                            title='Add a single exclusion date',
+        modal = RuleModal(field=tr(self.stm.lang, 'Enter an exclusion date (fuzzy or iso)'),
+                            title=tr(self.stm.lang, 'Add a single exclusion date'),
                             custom_callback=self.date_callback,
                             mode=RuleMode.DATE_EX_ADD)
         await util.interaction.open_popup(interaction, modal)
@@ -682,26 +693,27 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
 
         # populate the dropdown selection
         self.update_dropdown()
+        self.set_lang(stm.lang)
 
 
 
     def get_embed(self) -> discord.Embed:
 
-        rules = self.reminder.get_rule_dicts()
+        rules = self.reminder.get_rule_dicts(self.stm.lang)
 
         if self.rule_index is None:
-            descr = 'Select a rule or a date below to see it in full, or to delete it.'
+            descr = tr(self.stm.lang, 'Select a rule or a date below to see it in full, or to delete it.')
         else:
             descr = rules[self.rule_index]['descr']
 
         return discord.Embed(
-            title='Show/Delete existing rules',
+            title=tr(self.stm.lang, 'Show/Delete existing rules'),
             description=descr
         )
 
 
     def update_dropdown(self):
-        rules = self.reminder.get_rule_dicts()
+        rules = self.reminder.get_rule_dicts(self.stm.lang)
 
         dd_search = [x for x in self.children if isinstance(x, discord.ui.Select)]
 
@@ -721,7 +733,7 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
             self.remove_item(dd_search[0])
         elif rule_options:
             self.drop_down = discord.ui.Select(
-                placeholder='Select a rule/date for more info',
+                placeholder=tr(self.stm.lang, 'Select a rule/date for more info'),
                 min_values=1,
                 max_values=1,
                 options=rule_options,
@@ -755,13 +767,13 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
     @discord.ui.button(label='Delete Selected', style=discord.ButtonStyle.danger, row=2)
     async def del_rule(self, button:  discord.ui.Button, interaction: discord.Interaction):
 
-        rules = self.reminder.get_rule_dicts()
+        rules = self.reminder.get_rule_dicts(self.stm.lang)
         rule_descr = rules[self.rule_index]['descr']
 
         view = util.interaction.ConfirmDenyView(dangerous_action=True)
         embed = discord.Embed(
-            title='Danger',
-            description=f'Are you sure to delete the rule `{rule_descr}`?',
+            title=tr(self.stm.lang, 'Danger'),
+            description=tr(self.stm.lang, 'Are you sure to delete the rule `{rule}`?', rule=rule_descr),
             color=0xff0000
         )
         if await self.open_child(interaction, view, embed=embed):
@@ -776,9 +788,10 @@ class ReminderIntervalModifyView(util.interaction.CustomView):
                 return
 
             if not self.reminder.at:
-                eb = discord.Embed(title='Orphan warning',
+                eb = discord.Embed(title=tr(self.stm.lang, 'Orphan warning'),
                     color=0xaa3333,
-                    description='The reminder has no further events pending. It will be deleted soon, if no new rule is added')
+                    description=tr(self.stm.lang, 'The reminder has no further events pending. It will be deleted soon, '
+                                                  'if no new rule is added'))
                 if await self.open_child(None, util.interaction.AckView(dangerous_action=True), embed=eb):
                     return
 
@@ -831,30 +844,32 @@ class ReminderEditView(util.interaction.CustomView):
             self.set_interval.disabled = True
             self.edit_reminder_btn.disabled = True
             self.pause_btn.disabled = True
+        self.set_lang(stm.lang)
 
 
     def _override_edit_label(self):
         # skip the next date: repeating reminders with one
         self.skip_btn.disabled = self.is_foreign or not isinstance(self.reminder, IntervalReminder) or not self.reminder.at
+        lang = self.stm.lang
         if isinstance(self.reminder, IntervalReminder):
-            self.set_interval.label = 'Edit Interval' # override decorator
+            self.set_interval.label = tr(lang, 'Edit Interval') # override decorator
             self.pause_btn.disabled = self.is_foreign
             if self.reminder.paused:
-                self.pause_btn.label = 'Resume'
+                self.pause_btn.label = tr(lang, 'Resume')
                 self.pause_btn.emoji = '▶️'
             else:
-                self.pause_btn.label = 'Pause'
+                self.pause_btn.label = tr(lang, 'Pause')
                 self.pause_btn.emoji = '⏸️'
         else:
-            self.set_interval.label = 'Set Interval'
+            self.set_interval.label = tr(lang, 'Set Interval')
             # only repeating reminders can be paused
-            self.pause_btn.label = 'Pause'
+            self.pause_btn.label = tr(lang, 'Pause')
             self.pause_btn.emoji = '⏸️'
             self.pause_btn.disabled = True
 
 
     def get_embed(self) -> discord.Embed:
-        return self.reminder.get_info_embed(self.stm.tz_str)
+        return self.reminder.get_info_embed(self.stm.tz_str, lang=self.stm.lang)
 
 
     @discord.ui.button(label='Edit Channel', style=discord.ButtonStyle.primary)
@@ -892,7 +907,8 @@ class ReminderEditView(util.interaction.CustomView):
         modal = EditModal(reminder=self.reminder,
                           custom_callback=self.edit_done,
                           tz_str=self.stm.tz_str,
-                          title='Edit the Reminder')
+                          lang=self.stm.lang,
+                          title=tr(self.stm.lang, 'Edit the Reminder'))
         await util.interaction.open_popup(interaction, modal)
 
 
@@ -903,7 +919,8 @@ class ReminderEditView(util.interaction.CustomView):
 
         reloaded = reload_reminder(self.reminder)
         if reloaded is None:
-            await interaction.response.send_message('This reminder was delivered or deleted while you edited it.', ephemeral=True)
+            await interaction.response.send_message(
+                tr(self.stm.lang, 'This reminder was delivered or deleted while you edited it.'), ephemeral=True)
             self.stop() # back to the list
             return
 
@@ -934,9 +951,10 @@ class ReminderEditView(util.interaction.CustomView):
             return
 
         view = util.interaction.ConfirmDenyView()
-        eb = discord.Embed(title='Skip the next date?',
-                           description=f'The reminder won\'t be sent on <t:{int(timeutil.utc_timestamp(self.reminder.at))}:F>.\n'\
-                                       'This adds an exclusion date, which you can delete in `Edit Interval`.')
+        eb = discord.Embed(title=tr(self.stm.lang, 'Skip the next date?'),
+                           description=tr(self.stm.lang, 'The reminder won\'t be sent on {date}.\n'
+                                                         'This adds an exclusion date, which you can delete in `Edit Interval`.',
+                                          date=f'<t:{int(timeutil.utc_timestamp(self.reminder.at))}:F>'))
         if await self.open_child(interaction, view, embed=eb):
             return
 
@@ -961,7 +979,7 @@ class ReminderEditView(util.interaction.CustomView):
 
         view = util.interaction.ConfirmDenyView(dangerous_action=True)
         eb = self.get_embed()
-        eb.title = 'Delete Reminder?'
+        eb.title = tr(self.stm.lang, 'Delete Reminder?')
         if await self.open_child(interaction, view, embed=eb):
             return
 

@@ -95,10 +95,38 @@ class CustomView(discord.ui.View):
         # when set, only this user can use the components
         # (needed for views attached to public messages)
         self.owner_id = None
+        # the language of the user ('en', 'fr'), set_lang(); None: English
+        self.lang = None
+
+    def set_lang(self, lang):
+        """show the buttons and dropdowns in that language: their English text is the key
+
+        Texts set later (a button changing from Pause to Resume) are translated where they are set.
+        """
+        self.lang = lang
+        for item in self.children:
+            originals = getattr(item, '_english', None)
+            if originals is None:
+                originals = {attr: getattr(item, attr, None) for attr in ('label', 'placeholder')}
+                item._english = originals
+            for attr, text in originals.items():
+                if isinstance(text, str):
+                    setattr(item, attr, lib.i18n.tr(lang, text))
+            options = getattr(item, 'options', None) or []
+            if options:
+                # new options: py-cord shares the ones of a decorated dropdown between all the menus,
+                # changing them would show this language to everyone
+                if getattr(item, '_english_options', None) is None:
+                    item._english_options = [option.label for option in options]
+                item.options = [discord.SelectOption(label=lib.i18n.tr(lang, english), value=option.value,
+                                                     description=option.description, emoji=option.emoji,
+                                                     default=option.default)
+                                for option, english in zip(options, item._english_options)]
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if self.owner_id is not None and interaction.user.id != self.owner_id:
-            await interaction.response.send_message('Only the person who opened this menu can use it.', ephemeral=True)
+            await interaction.response.send_message(
+                lib.i18n.tr(lib.i18n.lang_of(interaction), 'Only the person who opened this menu can use it.'), ephemeral=True)
             return False
         self.last_interaction = interaction
         return True
@@ -168,7 +196,8 @@ class CustomView(discord.ui.View):
         """end this menu and the ones it was opened from, with a message"""
         self.expired = True
         self.stop()
-        await self.show(embed=discord.Embed(title='Menu closed', description=text, color=0xff0000), view=None)
+        await self.show(embed=discord.Embed(title=lib.i18n.tr(self.lang, 'Menu closed'),
+                                            description=lib.i18n.tr(self.lang, text), color=0xff0000), view=None)
 
 
     async def open_child(self, interaction: discord.Interaction, child: 'CustomView', **kwargs) -> bool:
@@ -183,6 +212,8 @@ class CustomView(discord.ui.View):
         """
         if child.owner_id is None:
             child.owner_id = self.owner_id
+        if child.lang is None and self.lang:
+            child.set_lang(self.lang)
 
         own_timeout, self.timeout = self.timeout, None  # py-cord's timer ends on None
         try:
@@ -226,8 +257,9 @@ class CustomView(discord.ui.View):
         """
         if not self.is_finished():
             return False
-        text = 'Saved. ' if saved else ''
-        text += 'This menu has expired, open it again with `/reminder_list`.'
+        lang = lib.i18n.lang_of(interaction)
+        text = lib.i18n.tr(lang, 'Saved. ') if saved else ''
+        text += lib.i18n.tr(lang, 'This menu has expired, open it again with `/reminder_list`.')
         if info:
             text += f'\n{info}'
         await interaction.response.send_message(text, ephemeral=True)
@@ -248,7 +280,7 @@ class AckView(CustomView):
 
         # but remove the other button this time
         self.disable_all()
-        button.label = 'Confirmed'
+        button.label = lib.i18n.tr(self.lang, 'Confirmed')
         button.style = discord.ButtonStyle.red if self.danger else discord.ButtonStyle.green
         self.children = [button]
 
@@ -269,7 +301,7 @@ class ConfirmDenyView(AckView):
 
         # modify button colors
         self.disable_all()
-        button.label='Aborted'
+        button.label = lib.i18n.tr(self.lang, 'Aborted')
         button.style = discord.ButtonStyle.danger
 
         await self.show(interaction, view=self)

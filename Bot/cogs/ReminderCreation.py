@@ -104,6 +104,7 @@ class NewReminderView(util.interaction.CustomView):
         self.info_str = info_str
         self.rrule_override = rrule_override
         self.owner_id = reminder.author
+        self.lang = stm.lang  # its sub-menus show in that language
 
         lang = stm.lang
         self.edit_interval.label = tr(lang, 'Edit Interval' if isinstance(reminder, IntervalReminder) else 'Set Interval')
@@ -139,6 +140,7 @@ class NewReminderView(util.interaction.CustomView):
         modal = util.reminderInteraction.EditModal(reminder=self.reminder,
                                                     custom_callback=self.edit_done,
                                                     tz_str=self.stm.tz_str,
+                                                    lang=lang_of(interaction),
                                                     title=tr(lang_of(interaction), 'Edit the Reminder'))
         await util.interaction.open_popup(interaction, modal)
 

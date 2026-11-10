@@ -15,6 +15,7 @@ import lib.input_parser
 import util.interaction
 import util.reminderInteraction
 from util.consts import Consts
+from lib.i18n import tr, date_str
 #import lib.ReminderRepeater
 
 
@@ -71,7 +72,7 @@ async def resolve_names(stm, reminders: list[Reminder]):
                 member = await guild.fetch_member(user_id)
             except discord.NotFound as e:
                 if e.code == Consts.unknown_member:
-                    stm.names[user_id] = 'a former member'
+                    stm.names[user_id] = tr(stm.lang, 'a former member')
                 return
         stm.names[user_id] = member.display_name
 
@@ -91,6 +92,7 @@ class ReminderListView(util.interaction.CustomView):
 
         self.stm:util.reminderInteraction.STM = stm
         self.owner_id = stm.ctx.author.id
+        self.lang = stm.lang  # its sub-menus show in that language
         self.mode_buttons = {}
         self.add_mode_buttons()
         self.update_dropdown()
@@ -102,7 +104,7 @@ class ReminderListView(util.interaction.CustomView):
         if lib.permissions.can_moderate(self.stm.ctx.author, self.stm.scope.guild_id):
             modes.append(SERVER)
         for mode in modes:
-            button = discord.ui.Button(label=MODE_LABELS[mode], row=2)
+            button = discord.ui.Button(label=tr(self.stm.lang, MODE_LABELS[mode]), row=2)
             button.callback = self.mode_callback(mode)
             self.mode_buttons[mode] = button
             self.add_item(button)
@@ -133,23 +135,24 @@ class ReminderListView(util.interaction.CustomView):
     def name_of(self, user_id: int) -> str:
         """a member as plain text (the dropdown can't show mentions)"""
         if user_id == self.stm.scope.user_id:
-            return 'you'
-        return self.stm.names.get(user_id) or 'another member'
+            return tr(self.stm.lang, 'you')
+        return self.stm.names.get(user_id) or tr(self.stm.lang, 'another member')
 
     def get_embed(self) -> discord.Embed:
 
+        lang = self.stm.lang
         if self.stm.scope.is_private:
-            title_str = 'Your private reminders'
+            title_str = tr(lang, 'Your private reminders')
         elif self.stm.mode == FOR_ME:
-            title_str = f'Reminders for you · {self.stm.ctx.guild.name}'
+            title_str = tr(lang, 'Reminders for you · {guild}', guild=self.stm.ctx.guild.name)
         elif self.stm.mode == SERVER:
-            title_str = f'All reminders · {self.stm.ctx.guild.name}'
+            title_str = tr(lang, 'All reminders · {guild}', guild=self.stm.ctx.guild.name)
         else:
-            title_str = f'Your reminders · {self.stm.ctx.guild.name}'
+            title_str = tr(lang, 'Your reminders · {guild}', guild=self.stm.ctx.guild.name)
 
         return ReminderListing.get_reminder_list_eb(self.stm.reminders, self.stm.page, title_str, self.stm.tz_str,
-                                                    self.stm.scope.user_id, empty_text=EMPTY_TEXTS[self.stm.mode],
-                                                    names=self.stm.names, all_authors=self.stm.mode == SERVER)
+                                                    self.stm.scope.user_id, empty_text=tr(lang, EMPTY_TEXTS[self.stm.mode]),
+                                                    names=self.stm.names, all_authors=self.stm.mode == SERVER, lang=lang)
 
 
     def option_description(self, rem: Reminder) -> str:
@@ -157,17 +160,18 @@ class ReminderListView(util.interaction.CustomView):
            with other members' reminders (plain text: no Discord timestamps or
            mentions there)
         """
+        lang = self.stm.lang
         parts = []
         if self.stm.mode in (FOR_ME, SERVER):
-            parts.append(f'from {self.name_of(rem.author)}')
+            parts.append(tr(lang, 'from {name}', name=self.name_of(rem.author)))
         if getattr(rem, 'paused', False):
-            parts.append('⏸️ paused')
+            parts.append(tr(lang, '⏸️ paused'))
         if rem.at:
             local = rem.at.replace(tzinfo=tz.UTC).astimezone(tz.gettz(self.stm.tz_str))
-            parts.append(local.strftime('%a %d %b %H:%M'))
+            parts.append(date_str(local, lang))
         else:
-            parts.append('no next date')
-        parts.append(f'#{rem.ch_name}' if rem.ch_id and rem.ch_name and not rem.by_dm else 'DM')
+            parts.append(tr(lang, 'no next date'))
+        parts.append(f'#{rem.ch_name}' if rem.ch_id and rem.ch_name and not rem.by_dm else tr(lang, 'DM'))
         prefix = '🔁 ' if isinstance(rem, IntervalReminder) else ''
         return (prefix + ' · '.join(parts))[:100]
 
@@ -202,7 +206,7 @@ class ReminderListView(util.interaction.CustomView):
             reminder_opts = []
             for i, r in enumerate(page_rems):
                 # labels need 1 to 100 characters
-                lbl = (r.title or r.msg or '').replace('\n', ' ').strip()[:80] or '*empty reminder*'
+                lbl = (r.title or r.msg or '').replace('\n', ' ').strip()[:80] or tr(self.stm.lang, '*empty reminder*')
 
                 reminder_opts.append(discord.SelectOption(
                     label= lbl,
@@ -212,7 +216,7 @@ class ReminderListView(util.interaction.CustomView):
 
 
             dd = discord.ui.Select(
-                placeholder='Select a reminder to edit',
+                placeholder=tr(self.stm.lang, 'Select a reminder to edit'),
                 min_values=1,
                 max_values=1,
                 options=reminder_opts,
@@ -288,28 +292,30 @@ class ReminderListing(commands.Cog):
     
 
     @staticmethod
-    def _rule_summary(rem: IntervalReminder) -> str:
+    def _rule_summary(rem: IntervalReminder, lang='en') -> str:
         """the repetition of an interval in a few words ('every Fri, 1 exception')"""
         if rem.rrules:
             try:
                 # the next date is shown above: drop 'starting Fri Nov 13, 2026 7am'
                 text = lib.input_parser.rrule_to_english(rem.rrules[0]).split(' starting ')[0]
             except Exception:
-                text = 'custom repetition'
+                text = tr(lang, 'custom repetition')
             others = len(rem.rrules) - 1 + len(rem.rdates)
             if others:
-                text += f' (+{others} more)'
+                text += tr(lang, ' (+{n} more)', n=others)
         else:
-            text = f'{len(rem.rdates) + 1} dates'
+            text = tr(lang, '{n} dates', n=len(rem.rdates) + 1)
 
         exceptions = len(rem.exrules) + len(rem.exdates)
-        if exceptions:
-            text += f', {exceptions} exception' + ('s' if exceptions > 1 else '')
+        if exceptions == 1:
+            text += tr(lang, ', 1 exception')
+        elif exceptions:
+            text += tr(lang, ', {n} exceptions', n=exceptions)
         return text
 
 
     @staticmethod
-    def _entry(number: int, rem: Reminder, author_id=None, names=None, all_authors=False) -> str:
+    def _entry(number: int, rem: Reminder, author_id=None, names=None, all_authors=False, lang='en') -> str:
         """one reminder of the list: its name, then its date, channel and repetition
 
         author_id: the user looking at the list ('from' whom, 'for' whom
@@ -327,33 +333,33 @@ class ReminderListing(commands.Cog):
         is_interval = isinstance(rem, IntervalReminder)
         paused = getattr(rem, 'paused', False)
 
-        name = (rem.title or rem.msg or '').replace('\n', ' ').strip() or '*empty reminder*'
+        name = (rem.title or rem.msg or '').replace('\n', ' ').strip() or tr(lang, '*empty reminder*')
         icons = ('🔁 ' if is_interval else '') + ('⏸️ ' if paused else '')
         head = f'{lib.input_parser.num_to_emoji(number)} {icons}**{discord.utils.escape_markdown(lib.text.shorten(name, 60))}**'
 
         details = []
         if rem.at:
             ts = int(utc_timestamp(rem.at))
-            details += [f'<t:{ts}:f>', 'paused' if paused else f'<t:{ts}:R>']
+            details += [f'<t:{ts}:f>', tr(lang, 'paused') if paused else f'<t:{ts}:R>']
         else:
-            details.append('no next date')
-        details.append(f'<#{rem.ch_id}>' if rem.ch_id and not rem.by_dm else 'by DM')
+            details.append(tr(lang, 'no next date'))
+        details.append(f'<#{rem.ch_id}>' if rem.ch_id and not rem.by_dm else tr(lang, 'by DM'))
         if rem.target and rem.target not in (rem.author, author_id):
-            details.append(f'for {who(rem.target, rem.target_name or f"<@{rem.target}>")}')
+            details.append(tr(lang, 'for {name}', name=who(rem.target, rem.target_name or f"<@{rem.target}>")))
         if author_id and rem.author != author_id:
-            details.append(f'from {who(rem.author, f"<@{rem.author}>")}')
+            details.append(tr(lang, 'from {name}', name=who(rem.author, f"<@{rem.author}>")))
         elif all_authors:
-            details.append('from you')
+            details.append(tr(lang, 'from you'))
 
         lines = [head, '\u2003' + ' · '.join(details)]
         if is_interval:
-            lines.append('\u2003↳ ' + ReminderListing._rule_summary(rem))
+            lines.append('\u2003↳ ' + ReminderListing._rule_summary(rem, lang))
         return '\n'.join(lines)
 
 
     @staticmethod
     def get_reminder_list_eb(reminders: list[Reminder], page, title_start='Reminders', tz_str='UTC', author_id=None,
-                             empty_text=EMPTY_TEXTS[MINE], names=None, all_authors=False):
+                             empty_text=EMPTY_TEXTS[MINE], names=None, all_authors=False, lang='en'):
         """the list embed: the reminders of the selected page, numbered like the dropdown
 
         Args:
@@ -367,7 +373,7 @@ class ReminderListing(commands.Cog):
         selectables = ReminderListing.get_reminders_on_page(reminders, page)
 
         if selectables:
-            description = '\n\n'.join(ReminderListing._entry(i + 1, r, author_id, names, all_authors)
+            description = '\n\n'.join(ReminderListing._entry(i + 1, r, author_id, names, all_authors, lang)
                                       for i, r in enumerate(selectables))
         else:
             description = empty_text
@@ -375,7 +381,10 @@ class ReminderListing(commands.Cog):
         embed = discord.Embed(title=title_start, description=lib.text.shorten(description, lib.text.MAX_DESCRIPTION),
                               color=0x409fe2)
         count = len(reminders)
-        embed.set_footer(text=f'Page {page + 1}/{page_cnt} · {count} reminder' + ('s' if count != 1 else ''))
+        if count == 1:
+            embed.set_footer(text=tr(lang, 'Page {page}/{pages} · 1 reminder', page=page + 1, pages=page_cnt))
+        else:
+            embed.set_footer(text=tr(lang, 'Page {page}/{pages} · {n} reminders', page=page + 1, pages=page_cnt, n=count))
         return embed
 
 
