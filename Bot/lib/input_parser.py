@@ -283,7 +283,7 @@ def _parse_fuzzy(input, utcnow, display_tz):
         try:
             remind_parse = dateutil.parser.parse(input, fuzzy=True, dayfirst=True, yearfirst=False)
         except dateutil.parser.ParserError as e:
-            info = '• ' + ' '.join(e.args)
+            info = f'• {e}'
             remind_parse = None
         except Exception as e:
             remind_parse = None
@@ -305,8 +305,71 @@ def _parse_fuzzy(input, utcnow, display_tz):
 
 _MONTH = r'(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)'
 
+def _ordinal(day: str) -> str:
+    n = int(day)
+    return f'{n}th' if 10 <= n % 100 <= 20 else f'{n}' + {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+
+
+_DAYS_FR = {'lundi': 'monday', 'mardi': 'tuesday', 'mercredi': 'wednesday', 'jeudi': 'thursday',
+            'vendredi': 'friday', 'samedi': 'saturday', 'dimanche': 'sunday'}
+_MONTHS_FR = {'janvier': 'january', 'février': 'february', 'fevrier': 'february', 'mars': 'march',
+              'avril': 'april', 'mai': 'may', 'juin': 'june', 'juillet': 'july', 'août': 'august',
+              'aout': 'august', 'septembre': 'september', 'octobre': 'october', 'novembre': 'november',
+              'décembre': 'december', 'decembre': 'december'}
+_DAY_FR = '(' + '|'.join(_DAYS_FR) + ')'
+_I = re.IGNORECASE
+
+# French into English, read by the English parsers ('demain à 18h30', 'tous les lundis à 9h')
+_FRENCH = [
+    # 'day after tomorrow' is read as tomorrow; 'in 2 days 10h' would be a duration
+    (re.compile(r'\bapr[eè]s[-\s]demain(?:\s+(?:à|a)?\s*(?=\d|midi\b))', _I), 'in 2 days at '),
+    (re.compile(r'\bapr[eè]s[-\s]demain\b', _I), 'in 2 days'),
+    (re.compile(r"\baujourd['’]\s?hui\b", _I), 'today'),
+    (re.compile(r'\bdemain\b', _I), 'tomorrow'),
+    (re.compile(r'\bce\s+soir\b', _I), 'tonight'),
+    (re.compile(rf'\b{_DAY_FR}\s+prochain\b', _I), r'next \1'),
+    (re.compile(r'\bla\s+semaine\s+prochaine\b', _I), 'next week'),
+    (re.compile(r'\ble\s+mois\s+prochain\b', _I), 'next month'),
+    (re.compile(r'\b(?:tous\s+les|chaque)\s+jours?\s+(?:de\s+(?:la\s+)?semaine|ouvr[ée]s?)\b|\ben\s+semaine\b', _I),
+     'every weekday'),
+    (re.compile(r'\b(?:tous|toutes)\s+les\b|\bchaque\b', _I), 'every'),
+    (re.compile(r"\bjusqu['’]?\s*(?:au|à|a)\b", _I), 'until'),
+    (re.compile(r'(\d+)\s*heures?\b', _I), r'\1 hours'),
+    (re.compile(r'(\d+)\s*jours?\b', _I), r'\1 days'),
+    (re.compile(r'(\d+)\s*semaines?\b', _I), r'\1 weeks'),
+    (re.compile(r'(\d+)\s*mois\b', _I), r'\1 months'),
+    (re.compile(r'(\d+)\s*(?:ans?|ann[ée]es?)\b', _I), r'\1 years'),
+    (re.compile(r'\bevery\s+jours?\b', _I), 'every day'),
+    (re.compile(r'\bevery\s+semaines?\b', _I), 'every week'),
+    (re.compile(r'\bevery\s+mois\b', _I), 'every month'),
+    (re.compile(r'\bevery\s+(?:ans|ann[ée]es)\b', _I), 'every year'),
+    (re.compile(r'\bevery\s+heures?\b', _I), 'every hour'),
+    (re.compile(r'\bweek-?ends?\b', _I), 'weekend'),
+    # 'tous les mois le 15', 'tous les ans le 1er juillet'
+    (re.compile(r'\bevery\s+month\s+le\s+(\d{1,2})(?:er)?\b', _I), lambda m: f'every month on the {_ordinal(m[1])}'),
+    (re.compile(r'\bevery\s+year\s+le\s+', _I), 'every year on '),
+    (re.compile(r'\b(\d{1,2})er\b', _I), r'\1'),
+    (re.compile(r'\ble\s+(?=\d)', _I), ''),
+    (re.compile(r'\b(?:premi(?:er|ère)s?|1(?:er|ère|re))\s+(?=' + _DAY_FR[1:-1] + ')', _I), 'first '),
+    (re.compile(r'\b(?:deuxi[eè]me|2e|2ème)s?\s+(?=' + _DAY_FR[1:-1] + ')', _I), 'second '),
+    (re.compile(r'\b(?:troisi[eè]me|3e|3ème)s?\s+(?=' + _DAY_FR[1:-1] + ')', _I), 'third '),
+    (re.compile(r'\b(?:quatri[eè]me|4e|4ème)s?\s+(?=' + _DAY_FR[1:-1] + ')', _I), 'fourth '),
+    (re.compile(r'\bderni(?:er|ère)s?\s+(?=' + _DAY_FR[1:-1] + ')', _I), 'last '),
+    (re.compile(r'\bdu\s+mois\b', _I), 'of the month'),
+    (re.compile(rf'\b{_DAY_FR}s?\b', _I), lambda m: _DAYS_FR[m[1].lower()]),
+    (re.compile(r'\b(' + '|'.join(_MONTHS_FR) + r')\b', _I), lambda m: _MONTHS_FR[m[1].lower()]),
+    (re.compile(r'\bmidi\b', _I), 'noon'),
+    (re.compile(r'\bminuit\b', _I), 'midnight'),
+    (re.compile(r'\bdans\b', _I), 'in'),
+    (re.compile(r'(?:\bà|\ba)\s+(?=\d|noon\b|midnight\b)', _I), 'at '),
+    (re.compile(r'\bet\b', _I), 'and'),
+]
+
 # rewrites of inputs the parsers misread, into forms they read well
 _REWRITES = [
+    # 'every 2h' was read as today 02:00
+    (re.compile(r'\bevery\s+(\d+)\s*h(?:rs?|ours?)?\b', re.IGNORECASE), r'every \1 hours'),
+    (re.compile(r'\bevery\s+(\d+)\s*(?:mn|min|m)\b', re.IGNORECASE), r'every \1 minutes'),
     # parsedatetime knows 'sep' and 'september', 'thu' and 'thursday' only
     (re.compile(r'\bsept\b\.?', re.IGNORECASE), 'sep'),
     (re.compile(r'\bthurs?\b\.?', re.IGNORECASE), 'thu'),
@@ -325,10 +388,28 @@ _TIME_ONLY_RE = re.compile(r'^(?:at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\d{1,2}:\d
                            re.IGNORECASE)
 
 
+# '9h', '18h30', '18 h 30': a time of day, once the input is not a duration ('1h30' alone)
+_H_TIME_RE = re.compile(r'(?<![\w:])([01]?\d|2[0-3])\s?h(?:\s?([0-5]\d))?(?!\w)', re.IGNORECASE)
+
+
 def _rewrite(text: str) -> str:
-    for pattern, replacement in _REWRITES:
+    for pattern, replacement in _FRENCH + _REWRITES:
         text = pattern.sub(replacement, text)
     return text
+
+
+# a time right after a repetition or 'in 2 days' needs an 'at' ('every friday 18:00' lost its time)
+_AT_TIME_RE = re.compile(r'\b((?:every|in\s+\d+\s+days?)\b[^:]*?[a-z])\s+(\d{1,2}:\d{2})\b', re.IGNORECASE)
+
+
+# compact durations ('1y', '2d', '5mi'): their 'h' is a duration too
+_COMPACT_DURATION_RE = re.compile(r'\b\d+(?:y|mo|w|d|mi|min|m)\b', re.IGNORECASE)
+
+
+def _h_times(text: str) -> str:
+    if not _COMPACT_DURATION_RE.search(text):
+        text = _H_TIME_RE.sub(lambda m: f'{m[1]}:{m[2] or "00"}', text)
+    return _AT_TIME_RE.sub(lambda m: m[0] if m[1].lower().endswith(' at') else f'{m[1]} at {m[2]}', text)
 
 
 def parse(input, utcnow, timezone='UTC'):
@@ -368,7 +449,8 @@ def _parse(input, utcnow, timezone='UTC'):
     # next separate number form char arguments
 
     rx = re.compile(r'[^a-zA-Z0-9-]') # allow negative sign
-    args = rx.split(input)
+    # 'in 1h30' is the duration '1h30'
+    args = rx.split(re.sub(r'^in\s+', '', input, flags=re.IGNORECASE))
     # numbers and units written together: '1h30m' -> '1', 'h', '30', 'm'
     args = [part for arg in args for part in re.findall(r'-?\d+|[^\d-]+', arg)]
 
@@ -379,6 +461,10 @@ def _parse(input, utcnow, timezone='UTC'):
   
     remind_at, info, ex = _parse_relative(args, utcnow)
     early_abort = (ex != None)
+
+    if remind_at == utcnow and not early_abort:
+        # not a duration: '9h' / '18h30' are times of day
+        input = _h_times(input)
 
     if remind_at == utcnow and not early_abort:
         remind_at, info_iso, ex = _parse_iso(input, utcnow, display_tz)
@@ -405,9 +491,10 @@ def _parse(input, utcnow, timezone='UTC'):
 
     # negative intervals are not allowed
     if isinstance(remind_at, datetime) and remind_at < utcnow:
+        to_local = lambda d: d.replace(tzinfo=tz.UTC).astimezone(display_tz)
         info += '• the given date must be in the future\n'
-        info += '  current utc-time is:  {:s}\n'.format(utcnow.strftime('%Y-%m-%d %H:%M'))
-        info += '  interpreted input is: {:s}\n'.format(remind_at.strftime('%Y-%m-%d %H:%M'))
+        info += '  now:        {:s}\n'.format(to_local(utcnow).strftime('%Y-%m-%d %H:%M'))
+        info += '  understood: {:s}\n'.format(to_local(remind_at).strftime('%Y-%m-%d %H:%M'))
         # return negative intervals, but keep warning
     elif isinstance(remind_at, datetime):
         # protect against out of epoch dates

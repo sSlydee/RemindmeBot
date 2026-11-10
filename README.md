@@ -58,10 +58,10 @@ Times are read in the timezone of the server (yours in DMs).
 |---|---|
 | `2h`, `90 min`, `3d`, `1 week`, `2 years` | after that duration |
 | `1h30`, `1h 30m`, `1y 1mo 2 days -5h` | durations can be combined |
-| `in 2h`, `in 3 days at 9:00` | the same, in words |
-| `9:00`, `at 3pm`, `noon` | that time today, or tomorrow once it has passed |
-| `tomorrow 9:00`, `tomorrow at 3pm`, `tonight` | a time tomorrow or today |
-| `friday 18:30`, `monday at 8am`, `next friday` | the next such day |
+| `in 2h`, `in 1h30`, `in 3 days at 9:00` | the same, in words |
+| `9:00`, `at 3pm`, `at 18h30`, `noon` | that time today, or tomorrow once it has passed |
+| `tomorrow 9:00`, `tomorrow 18h30`, `tomorrow at 3pm`, `tonight` | a time tomorrow or today |
+| `friday 18:30`, `friday 9h`, `monday at 8am`, `next friday` | the next such day |
 | `24 dec 6pm`, `2 aug 15:00`, `july 1st at 10:00`, `23/09 15:00` | a date (day first: `01/02/27` is 1 February 2027) |
 | `23 september 2027 15:00`, `2027-01-15 09:00` | a date with its year |
 | `2027-01-15T09:00:00+01:00` | an ISO timestamp (its own offset wins over the server timezone) |
@@ -71,6 +71,11 @@ Times are read in the timezone of the server (yours in DMs).
 
 Without a time, most dates keep the current time of day: `monday` is next
 Monday at the time you typed it (`next friday` is at 9:00).
+
+`9h` and `18h30` are times of day after a day or `at` (`tomorrow 18h30`,
+`at 9h`); alone, `1h30` or `18h30` stays a duration. French works too:
+`demain à 18h30`, `vendredi 9h`, `après-demain 10h`, `dans 3 jours`,
+`le 15 janvier à 9h`, `midi`.
 
 Reminders are delivered within a minute of their time.
 
@@ -85,6 +90,8 @@ every 2 weeks
 every first monday of the month
 every month on the 15th at 9:00
 every year on 1 july at 10:00
+tous les lundis à 9h
+tous les jours à 8h30 jusqu'au 20 décembre
 ```
 
 Or create a one-time reminder, then press **Set Interval** (or **Edit
