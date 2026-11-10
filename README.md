@@ -90,8 +90,9 @@ every year on 1 july at 10:00
 Or create a one-time reminder, then press **Set Interval** (or **Edit
 Interval** in `/reminder_list`):
 
-* **Quick repeat**: every day, every weekday, every week, every 2 weeks, every
-  month, every year, from the date of the reminder;
+* **Quick repeat**: every day, every weekday, every weekend, every week, every
+  2 weeks, every month, every year, from the date of the reminder (that date
+  stays the first one, even if it isn't on a weekday or a weekend);
 * **Add Repeating Rule**: plain words (`every friday at 7`) or an
   [RRULE](https://www.textmagic.com/free-tools/rrule-generator) such as
   `FREQ=MONTHLY;BYDAY=1MO`. A rule pasted from a generator, with its

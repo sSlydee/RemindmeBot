@@ -8,6 +8,8 @@ from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from dateutil import tz
+
 try:
     import mongomock
 except ImportError:  # pragma: no cover
@@ -192,6 +194,30 @@ class MenuFlowTest(unittest.IsolatedAsyncioTestCase):
         [interval] = self.stored_intervals()
         # 09:00 UTC is 10:00 in Paris, the rule frame
         self.assertIn('T100000', interval['rrules'][0])
+
+    async def test_quick_repeat_every_weekend(self):
+        rem = self.add_reminder()
+        msg = await self.open_interval_menu()
+        dropdown = next(item for item in msg.view.children if getattr(item, 'placeholder', None) == QUICK_REPEAT)
+        self.assertIn('Every weekend (Sat-Sun)', [o.label for o in dropdown.options])
+
+        await self.discord.choose(msg, QUICK_REPEAT, 'weekends')
+        self.assertEqual(msg.title, 'New Rrule')
+        await self.discord.click(msg, 'Confirm')
+        [stored] = self.stored_intervals()
+        self.assertIn('BYDAY=SA,SU', stored['rrules'][0])
+
+        # the date of the reminder stays the first one, like for every other rule;
+        # then Saturdays and Sundays, at the time of the reminder in Paris
+        interval = Connector.get_interval_by_id(stored['_id'])
+        self.assertEqual(interval.at, rem.at)
+        paris = tz.gettz('Europe/Paris')
+        in_paris = lambda utc: utc.replace(tzinfo=tz.UTC).astimezone(paris)
+        at = rem.at
+        for _ in range(4):
+            at = interval.next_trigger(at)
+            self.assertIn(in_paris(at).weekday(), (5, 6))
+            self.assertEqual(in_paris(at).time(), in_paris(rem.at).time())
 
     async def test_two_menus_on_the_same_reminder(self):
         self.add_reminder()

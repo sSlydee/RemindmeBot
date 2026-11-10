@@ -384,6 +384,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
     QUICK_RULES = {
         'daily': ('Every day', 'FREQ=DAILY'),
         'weekdays': ('Every weekday (Mon-Fri)', 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'),
+        'weekends': ('Every weekend (Sat-Sun)', 'FREQ=WEEKLY;BYDAY=SA,SU'),
         'weekly': ('Every week', 'FREQ=WEEKLY'),
         'biweekly': ('Every 2 weeks', 'FREQ=WEEKLY;INTERVAL=2'),
         'monthly': ('Every month', 'FREQ=MONTHLY'),
