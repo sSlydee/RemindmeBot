@@ -232,11 +232,41 @@ Everyone else gets English.
 
 ### Privacy
 
-`/help` → **Privacy** tells members what the bot stores (the reminders, who
-wrote them and who they are for, the settings), who can see a reminder (its
-author, the members it is for or mentions, the moderators, the owner of the
-bot) and how long it is kept: until it is sent or deleted, then 7 days for the
-buttons; daily backups 14 days; a removed server's data 7 days.
+`/help` → **Privacy** shows this note to members (in French to the members
+whose Discord is in French):
+
+The bot runs on a server of its owner. It keeps what it needs to send the
+reminders, and shares it with no one but Discord.
+
+**What is stored**
+
+* the reminders: text, title, image link, dates and repetitions, and the
+  language of their author's Discord (to send them in it);
+* who wrote them and who they are for, their server and channel, and the last
+  message of that channel (for the *jump to the chat* link);
+* the settings of the server (timezone, style...), and a user's own timezone
+  and style if they set them in DMs.
+
+**Who can see a reminder**
+
+* its author, and the member it is for (*For me* in `/reminder_list`); the
+  members it mentions too, when it is for one member and they can read its
+  channel;
+* the moderators of the server (**Manage Messages**), in *Whole server*;
+* the owner of the bot, who runs its database.
+
+**How long**
+
+* until it is sent or deleted (`/reminder_list`), then 7 days more for the
+  buttons under it;
+* the daily backups are kept 14 days;
+* the log of the bot keeps user and reminder IDs (and error details) until it
+  is rotated out;
+* when the bot is removed from a server, the data of that server is deleted
+  after 7 days.
+
+To have their data deleted sooner, members delete their reminders or ask the
+owner of the bot.
 
 ### Limits
 

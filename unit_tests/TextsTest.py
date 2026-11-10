@@ -42,6 +42,21 @@ class PrivacyTest(unittest.TestCase):
         self.assertIn(f'deleted after {Consts.left_guild_keep.days} days', text)
         self.assertIn('backups are kept 14 days', text)
 
+    def test_says_what_is_stored_and_who_sees_it(self):
+        # the language of the author is stored since the French display
+        self.assertIn('the language of your Discord', util.privacy.PRIVACY_TEXT)
+        self.assertIn('la langue de ton Discord', util.privacy.PRIVACY_TEXT_FR)
+        # a mention shows a reminder only when it is for one member and its channel can be read
+        self.assertIn('when it is for one member and they can read its channel', util.privacy.PRIVACY_TEXT)
+        self.assertLessEqual(len(util.privacy.PRIVACY_TEXT_FR), 2000)
+
+    def test_readme_has_the_note(self):
+        import pathlib
+        readme = (pathlib.Path(__file__).parent.parent / 'README.md').read_text()
+        for part in ('**What is stored**', '**Who can see a reminder**', '**How long**',
+                     'when it is for one member and they can read its'):
+            self.assertIn(part, readme)
+
 
 class HelpTest(unittest.IsolatedAsyncioTestCase):
 
