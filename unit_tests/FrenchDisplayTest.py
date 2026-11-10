@@ -19,6 +19,12 @@ from cogs.SettingsModule import SettingsModule
 from cogs.TimezoneModule import TimezoneModule
 from discord.ext.help.help import Help
 import lib.i18n as i18n
+import lib.input_parser
+import lib.permissions
+import util.privacy
+import util.timezones
+from discord.ext.help.help import HelpPage, HelpElement
+import asyncio
 import lib.timeutil as timeutil
 from lib.Connector import Connector
 from lib.Reminder import Reminder, IntervalReminder
@@ -309,7 +315,8 @@ class MenusTest(unittest.IsolatedAsyncioTestCase):
 
         await self.discord.choose(msg, 'Répétition rapide...', 'weekly')
         self.assertEqual(msg.title, 'Nouvelle répétition')
-        self.assertTrue(msg.embed.description.startswith('Ajouter **'))
+        self.assertTrue(msg.embed.description.startswith('Ajouter **toutes les semaines, à partir du '),
+                        msg.embed.description)
         self.assertEqual([f.name for f in msg.embed.fields], ['Prochaines dates de cette règle'])
         await self.discord.click(msg, 'Confirmer')
         await self.discord.click(msg, 'Retour')
@@ -321,6 +328,171 @@ class MenusTest(unittest.IsolatedAsyncioTestCase):
         [rules] = [item for item in msg.view.children if getattr(item, 'placeholder', None)]
         self.assertEqual(rules.placeholder, 'Choisis une règle ou une date')
         self.assertEqual(rules.options[0].label, 'Règle de répétition')
+        self.assertTrue(rules.options[0].description.startswith('toutes les semaines'))
+
+
+class RuleTextTest(unittest.TestCase):
+    """repetitions written in French words"""
+
+    def fr(self, rule, start=False):
+        return lib.input_parser.rule_text('DTSTART:20261112T090000\nRRULE:' + rule, 'fr', start=start)
+
+    def test_rules(self):
+        cases = {
+            'FREQ=WEEKLY;BYDAY=SA,SU': 'tous les week-ends',
+            'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=8;BYMINUTE=30': 'en semaine à 8h30',
+            'FREQ=DAILY': 'tous les jours',
+            'FREQ=DAILY;INTERVAL=3': 'tous les 3 jours',
+            'FREQ=WEEKLY;INTERVAL=2': 'toutes les 2 semaines',
+            'FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=9;BYMINUTE=0': 'tous les lundis et mercredis à 9h',
+            'FREQ=MONTHLY;BYDAY=1MO': 'le 1er lundi de chaque mois',
+            'FREQ=MONTHLY;BYDAY=-1FR;BYHOUR=18;BYMINUTE=0': 'le dernier vendredi de chaque mois à 18h',
+            'FREQ=MONTHLY;BYMONTHDAY=15;BYHOUR=9;BYMINUTE=0': 'le 15 de chaque mois à 9h',
+            'FREQ=YEARLY;BYMONTH=7;BYMONTHDAY=1': 'tous les ans le 1er juillet',
+            'FREQ=HOURLY;INTERVAL=2': 'toutes les 2 heures',
+            'FREQ=MINUTELY;INTERVAL=30': 'toutes les 30 minutes',
+            'FREQ=WEEKLY;BYDAY=FR;COUNT=3': 'tous les vendredis, 3 fois',
+            'FREQ=WEEKLY;BYDAY=FR;UNTIL=20261220T000000': 'tous les vendredis jusqu’au 20 décembre 2026',
+        }
+        for rule, text in cases.items():
+            self.assertEqual(self.fr(rule), text, rule)
+
+    def test_with_its_start(self):
+        self.assertEqual(self.fr('FREQ=WEEKLY;BYDAY=SA,SU', start=True), 'tous les week-ends, à partir du jeu. 12 nov. 2026 09:00')
+
+    def test_unknown_rules_stay_in_english(self):
+        self.assertTrue(self.fr('FREQ=MONTHLY;BYSETPOS=1;BYDAY=MO').startswith('for the 1st instance'))
+
+    def test_english_unchanged(self):
+        rule = 'DTSTART:20261112T090000\nRRULE:FREQ=WEEKLY;BYDAY=SA,SU'
+        self.assertEqual(lib.input_parser.rule_text(rule), lib.input_parser.rrule_to_english(rule))
+        self.assertEqual(lib.input_parser.rule_text(rule, start=False), 'every weekend')
+
+    def test_list_summary(self):
+        rem = IntervalReminder({'msg': 'x', 'author': '3', 'target': '3'})
+        rem.rrules = ['DTSTART:20261112T090000\nRRULE:FREQ=WEEKLY;BYDAY=SA,SU']
+        rem.exdates = [datetime(2026, 11, 14, 9)]
+        self.assertEqual(ReminderListing._rule_summary(rem, 'fr'), 'tous les week-ends, 1 exception')
+
+
+@unittest.skipUnless(mongomock, 'needs mongomock')
+class RepeatingCreationTest(unittest.IsolatedAsyncioTestCase):
+
+    async def test_footer_says_the_rule_in_french(self):
+        Connector.db = mongomock.MongoClient().reminderBot
+        Connector.set_timezone(GUILD, 'Europe/Paris')
+        ctx = FakeContext(FakeDiscord())
+        ctx.interaction.locale = 'fr'
+        await ReminderCreation(client=None).process_reminder(ctx, ctx.author, ctx.author, 'tous les lundis à 9h',
+                                                             'réunion', channel=ctx.channel)
+        eb = ctx.answers[-1]
+        self.assertEqual(eb.title, 'Rappel répété créé')
+        self.assertTrue(eb.footer.text.startswith('tous les lundis à 9h, à partir du '), eb.footer.text)
+
+
+@unittest.skipUnless(mongomock, 'needs mongomock')
+class SettingsAndTimezoneTest(unittest.IsolatedAsyncioTestCase):
+
+    def setUp(self):
+        Connector.db = mongomock.MongoClient().reminderBot
+        Connector.set_timezone(GUILD, 'Europe/Paris')
+        self.discord = FakeDiscord()
+        self.discord.locale = 'fr'
+
+    async def test_settings(self):
+        from cogs.SettingsModule import SettingsView
+        admin = SimpleNamespace(id=OWNER)
+        view = SettingsView(Connector.Scope(is_private=False, guild_id=GUILD, user_id=OWNER), admin, lang='fr')
+        self.assertEqual(view.get_embed().title, 'Réglages de Remindme')
+        labels = [item.label for item in view.children]
+        for label in ('Fuseau horaire', 'Style des rappels', 'Hybride', 'Minimal', 'Réponse à la création',
+                      'Visible par l’auteur seul', 'Rappels des membres', 'En MP'):
+            self.assertIn(label, labels)
+        self.assertIn('Europe/Paris', labels)  # the current timezone stays as it is
+
+        msg = await self.discord.respond(view, embed=view.get_embed())
+        await self.discord.click(msg, 'En MP')
+        self.assertTrue(Connector.get_dm_delivery(GUILD))
+        self.assertIn('En MP', [item.label for item in view.children])
+
+        await self.discord.click(msg, 'Fuseau horaire')
+        eb = self.discord.last_message().embed
+        self.assertEqual(eb.title, 'Fuseau horaire actuel Europe/Paris')
+        self.assertIn('Il est actuellement', eb.description)
+
+    async def test_settings_in_dm_and_forbidden(self):
+        from cogs.SettingsModule import SettingsView
+        view = SettingsView(Connector.Scope(is_private=True, user_id=OWNER), SimpleNamespace(id=OWNER), lang='fr')
+        self.assertTrue(view.get_embed().description.startswith('Tes propres réglages'))
+        self.assertEqual(lib.permissions.missing_settings_permission_embed('fr').title, 'Permission manquante')
+
+    def test_timezone_texts(self):
+        eb = util.timezones.timezone_embed('Europe/Paris', title='New Timezone', intro='The timezone will be set to',
+                                           lang='fr')
+        self.assertEqual(eb.title, 'Nouveau fuseau horaire Europe/Paris')
+        self.assertTrue(eb.description.startswith('Le fuseau horaire sera `Europe/Paris`'))
+        self.assertIn('obsolète', util.timezones.timezone_hints('CET', 'fr'))
+        eb = TimezoneModule(client=None)._get_tz_error_eb('Paris', lang='fr')
+        self.assertEqual(eb.title, 'Fuseau horaire invalide')
+        self.assertIn('ou choisis-en un ci-dessous', eb.description)
+
+    async def test_timezone_confirmation(self):
+        ctx = FakeContext(self.discord)
+        ctx.interaction.locale = 'fr'
+        task = asyncio.get_running_loop().create_task(TimezoneModule(client=None).set_timezone(ctx, GUILD, 'Europe/Berlin'))
+        await self.discord.settle()
+        msg = self.discord.messages[0]
+        self.assertEqual(msg.title, 'Nouveau fuseau horaire Europe/Berlin')
+        await self.discord.click(msg, 'Confirmer')
+        await task
+        self.assertEqual(Connector.get_timezone(GUILD), 'Europe/Berlin')
+
+
+class HelpFrTest(unittest.IsolatedAsyncioTestCase):
+
+    def test_pages(self):
+        page = HelpPage(name='syntax', title='Syntax Help', description='english', emoji='✏️',
+                        translations={'fr': ('Aide à la syntaxe', 'français')},
+                        elements=[HelpElement('/remindme', 'Set a reminder for yourself', {'fr': 'Créer un rappel pour toi'})])
+        eb = page.to_embed('Something looks wrong? Tell a moderator of your server.', 'fr')
+        self.assertEqual((eb.title, eb.description), ('Aide à la syntaxe', 'français'))
+        self.assertEqual(eb.fields[0].value, 'Créer un rappel pour toi')
+        self.assertEqual(eb.fields[-1].value, 'Un souci ? Demande à un modérateur de ton serveur.')
+        self.assertEqual(page.to_embed('x').title, 'Syntax Help')
+        self.assertEqual(page.to_option(lang='fr').label, 'Syntaxe')
+
+    async def test_view_and_privacy(self):
+        from unittest.mock import AsyncMock, MagicMock
+        import discord
+        Help.is_cog_scope = True
+        Help.add_page(HelpPage(name='overview', title='Help', description='commands',
+                               translations={'fr': ('Les commandes', 'toutes')}))
+        Help.add_page(HelpPage(name='syntax', title='Syntax Help', description='x'))
+        Help.set_privacy_text(util.privacy.PRIVACY_TEXT)
+        Help.set_privacy_text(util.privacy.PRIVACY_TEXT_FR, lang='fr')
+        cog = Help.__new__(Help)
+        cog.client = SimpleNamespace(user=SimpleNamespace(id=1))
+        ctx = MagicMock(spec=discord.ApplicationContext)
+        ctx.respond = AsyncMock()
+        ctx.interaction = SimpleNamespace(locale='fr')
+        await cog.send_help_page(ctx, 'overview')
+        kwargs = ctx.respond.call_args.kwargs
+        self.assertEqual(kwargs['embeds'][0].title, 'Les commandes')
+        items = kwargs['view'].children
+        self.assertIn('Autotest', [getattr(i, 'label', None) for i in items])
+        self.assertIn('Confidentialité', [getattr(i, 'label', None) for i in items])
+        [menu] = [i for i in items if getattr(i, 'placeholder', None)]
+        self.assertEqual(menu.placeholder, 'Choisis une page')
+
+        interaction = SimpleNamespace(locale='fr', response=SimpleNamespace(send_message=AsyncMock()))
+        await cog.help_send_privacy(interaction)
+        self.assertTrue(interaction.response.send_message.call_args.args[0].startswith('**Confidentialité**'))
+        interaction.locale = 'en-US'
+        await cog.help_send_privacy(interaction)
+        self.assertTrue(interaction.response.send_message.call_args.args[0].startswith('**Privacy**'))
+
+    def test_privacy_fits(self):
+        self.assertLessEqual(len(util.privacy.PRIVACY_TEXT_FR), 2000)
 
 if __name__ == '__main__':
     unittest.main()

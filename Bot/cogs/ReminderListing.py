@@ -296,8 +296,8 @@ class ReminderListing(commands.Cog):
         """the repetition of an interval in a few words ('every Fri, 1 exception')"""
         if rem.rrules:
             try:
-                # the next date is shown above: drop 'starting Fri Nov 13, 2026 7am'
-                text = lib.input_parser.rrule_to_english(rem.rrules[0]).split(' starting ')[0]
+                # the next date is shown above: without 'starting Fri Nov 13, 2026 7am'
+                text = lib.input_parser.rule_text(rem.rrules[0], lang, start=False)
             except Exception:
                 text = tr(lang, 'custom repetition')
             others = len(rem.rrules) - 1 + len(rem.rdates)

@@ -358,6 +358,96 @@ FR_TEXTS = {
     'Single date': 'Date en plus',
     'Exception date': 'Date à sauter',
 
+    # ---------- /settings ----------
+    'Remindme Settings': 'Réglages de Remindme',
+    'Server Managers can edit these settings by pressing the corresponding buttons below.\n'
+    'The grayed-out buttons are the current selected options.\n\n'
+    '**Members\' reminders**: new reminders for one member are sent in their channel, '
+    'or by DM (in the channel if the DM fails). Reminders for a role stay in the channel.':
+        'Les membres qui peuvent gérer le serveur changent ces réglages avec les boutons ci-dessous.\n'
+        'Les boutons grisés sont les choix actuels.\n\n'
+        '**Rappels des membres** : les nouveaux rappels pour un membre sont envoyés dans leur salon, '
+        'ou en MP (dans le salon si le MP échoue). Les rappels pour un rôle restent dans le salon.',
+    'Your own settings: the style of the reminders the bot sends you by DM. The other settings are for servers.':
+        'Tes propres réglages : le style des rappels que le bot t’envoie en MP. Les autres réglages concernent les serveurs.',
+    'You need the `Manage Server` permission to change the settings of this server.':
+        'Il faut la permission `Gérer le serveur` pour changer les réglages de ce serveur.',
+    'Missing Permissions': 'Permission manquante',
+    'Server Timezone': 'Fuseau horaire',
+    'Preferred Reminder Style': 'Style des rappels',
+    'Hybrid Reminders': 'Hybride',
+    'Embed-Only Reminders': 'Embed seul',
+    'Text-Only Reminders': 'Texte seul',
+    'Barebone Reminders': 'Minimal',
+    'Creation Reply': 'Réponse à la création',
+    'Delete after Timeout': 'Supprimer après 5 min',
+    'Never Delete': 'Ne jamais supprimer',
+    'Only Show to author': 'Visible par l’auteur seul',
+    "Members' reminders": 'Rappels des membres',
+    'In the channel': 'Dans le salon',
+    'By DM': 'En MP',
+
+    # ---------- /timezone ----------
+    'Current Timezone': 'Fuseau horaire actuel',
+    'New Timezone': 'Nouveau fuseau horaire',
+    'The timezone is set to': 'Le fuseau horaire est',
+    'The timezone will be set to': 'Le fuseau horaire sera',
+    '\nUse `/timezone` to edit this value': '\n`/timezone` pour le changer',
+    'This corresponds to a local time of `{time}`': 'Il est actuellement `{time}` dans ce fuseau',
+    '\n• Consider using your local timezone (instead of `UTC+X`), in order to automatically adjust to daylight-saving*':
+        '\n• Préfère ton fuseau local (plutôt que `UTC+X`), pour suivre automatiquement l’heure d’été*',
+    '\n• Consider using `{zone}` to respect daylight saving during winter':
+        '\n• Préfère `{zone}` pour suivre l’heure d’hiver',
+    '\n• `{zone}` seems to be a deprecated timezone and could be discontinued in future versions.\n'
+    '• Try and use a geo-referenced timezone that _observes_ `{zone}` instead (e.g. `Europe/Berlin`)':
+        '\n• `{zone}` semble être un fuseau obsolète, qui pourrait disparaître.\n'
+        '• Préfère un fuseau géographique qui _suit_ `{zone}` (ex. `Europe/Paris`)',
+    'Invalid Timezone configuration': 'Fuseau horaire invalide',
+    'or select one from the list below': 'ou choisis-en un ci-dessous',
+    'The timezone `{zone}` is not valid\n'
+    'Please re-invoke the command with a valid timezone {select}\n\n'
+    'You can have a look at all available timezones on this '
+    '[wikipedia list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)':
+        'Le fuseau `{zone}` n’existe pas.\nRelance la commande avec un fuseau valide {select}\n\n'
+        'La liste complète est sur '
+        '[Wikipédia](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).',
+    'Select a timezone': 'Choisis un fuseau horaire',
+
+    # ---------- /help ----------
+    'Something looks wrong? Tell a moderator of your server.': 'Un souci ? Demande à un modérateur de ton serveur.',
+    'Self-Test': 'Autotest',
+    'Privacy': 'Confidentialité',
+    'Please select a category': 'Choisis une page',
+    'Overview Page': 'Commandes',
+    'Syntax Page': 'Syntaxe',
+    'Timezone Page': 'Fuseau horaire',
+    'Overview': 'Toutes les commandes',
+    'Syntax': 'Écrire une date ou une répétition',
+    'Timezone': 'Régler le fuseau horaire',
+    'Test Message': 'Message de test',
+    'You can safely delete this message': 'Tu peux supprimer ce message',
+    'Test Message, *please ignore this*': 'Message de test, *ignore-le*',
+    'Self-testing... *please ignore this.*': 'Autotest... *ignore ce message.*',
+    '*Text Only*': '*Texte seul*',
+    '**Failed**': '**Échec**',
+    '• Enable `Embed Links` permissions, to allow for a better reminder display\n':
+        '• Donne-moi la permission `Intégrer des liens` pour de plus jolis rappels\n',
+    '• Enable `Send Message` permissions for this text channel\n':
+        '• Donne-moi la permission `Envoyer des messages` dans ce salon\n',
+    '• Allow me to send you DMs to configure reminders and to receive error information, '
+    '[change your preferences]({url}) and test again.':
+        '• Autorise mes MP pour recevoir tes rappels et les erreurs : '
+        '[change tes préférences]({url}) et refais le test.',
+    'Reminder delivery': 'Envoi des rappels',
+    'DM permissions': 'MP',
+    'Local Time': 'Heure locale',
+    '{time} (based on timezone settings)': '{time} (selon le fuseau horaire réglé)',
+    'Discord API Latency': 'Latence de Discord',
+    'Library Latency*': 'Latence du bot*',
+    'Self-Test Duration*': 'Durée du test*',
+    '*this includes server and discord time inaccuracies towards `Coordinated Universal Time`':
+        '*inclut les écarts d’horloge du serveur et de Discord avec l’heure universelle',
+
     # ---------- notices ----------
     'Your reminder was deleted': 'Ton rappel a été supprimé',
     '**{name}** ({where})\nDeleted by {who}.': '**{name}** ({where})\nSupprimé par {who}.',

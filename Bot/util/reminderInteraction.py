@@ -486,7 +486,7 @@ class ReminderIntervalAddView(util.interaction.CustomView):
             else:
                 question = 'Add **{rule}**? The reminder will be sent on the dates of this rule.'
             eb = discord.Embed(title=tr(lang, f'New {action_str}'),
-                               description=tr(lang, question, rule=lib.input_parser.rrule_to_english(rrule)) + f'\n`{rrule}`')
+                               description=tr(lang, question, rule=lib.input_parser.rule_text(rrule, lang)) + f'\n`{rrule}`')
             if preview:
                 name = tr(lang, 'Skipped dates' if mode == RuleMode.RRULE_EX_ADD else 'Next dates of this rule')
                 eb.add_field(name=name, value=preview, inline=False)

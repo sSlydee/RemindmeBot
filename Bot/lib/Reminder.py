@@ -486,7 +486,7 @@ class IntervalReminder(Reminder):
             rrule = None
 
         if rrule:
-            interval_txt = lib.input_parser.rrule_to_english(rrule, now=now)
+            interval_txt = lib.input_parser.rule_text(rrule, lang, now=now)
         else:
             interval_txt = '\u200b'
 
@@ -574,10 +574,12 @@ class IntervalReminder(Reminder):
         ret = []
 
         for rule in self.rrules:
-            ret.append({'label': tr(lang or self.lang, 'Repeating rule'), 'descr': lib.input_parser.rrule_to_english(rule)[0:50], 'default': False})
+            ret.append({'label': tr(lang or self.lang, 'Repeating rule'),
+                        'descr': lib.input_parser.rule_text(rule, lang or self.lang)[0:100], 'default': False})
 
         for rule in self.exrules:
-            ret.append({'label': tr(lang or self.lang, 'Exception rule'), 'descr': lib.input_parser.rrule_to_english(rule)[0:50], 'default': False})
+            ret.append({'label': tr(lang or self.lang, 'Exception rule'),
+                        'descr': lib.input_parser.rule_text(rule, lang or self.lang)[0:100], 'default': False})
 
         for date in self.rdates:
             ret.append({'label': tr(lang or self.lang, 'Single date'), 'descr': date.strftime('%Y-%m-%d %H:%M'), 'default': False})

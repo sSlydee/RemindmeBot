@@ -13,6 +13,7 @@ import lib.permissions
 import lib.ReminderRepeater
 import util.interaction
 import util.timezones
+from lib.i18n import lang_of, tr
 from lib.Connector import Connector
 
 
@@ -50,17 +51,17 @@ class TimezoneModule(discord.Cog):
     
 
 
-    def _get_tz_error_eb(self, zone, no_list=False):
-        
-        select_str = '' if no_list else 'or select one from the list below'
+    def _get_tz_error_eb(self, zone, no_list=False, lang='en'):
 
-        eb = discord.Embed(title='Invalid Timezone configuration',
+        select_str = '' if no_list else tr(lang, 'or select one from the list below')
+
+        eb = discord.Embed(title=tr(lang, 'Invalid Timezone configuration'),
                         color=0xde4b55,  # red-ish
-                        description=f'The timezone `{zone}` is not valid\n'\
-                                    f'Please re-invoke the command with a valid timezone '\
-                                    f'{select_str}\n\n'\
-                                    f'You can have a look at all available timezones on this '\
-                                     '[wikipedia list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)')
+                        description=tr(lang, 'The timezone `{zone}` is not valid\n'
+                                             'Please re-invoke the command with a valid timezone {select}\n\n'
+                                             'You can have a look at all available timezones on this '
+                                             '[wikipedia list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)',
+                                       zone=zone, select=select_str))
 
         return eb
     
@@ -71,8 +72,9 @@ class TimezoneModule(discord.Cog):
 
 
     async def set_timezone(self, ctx: discord.ApplicationContext, instance_id: int, value: str, ephemeral: bool = False):
-        
+
         responded=False
+        lang = lang_of(ctx)
 
         # tz lib will break on lower case utc
         re_utc = r'utc\+\d{1,2}'
@@ -98,7 +100,7 @@ class TimezoneModule(discord.Cog):
             
             if not closest_tz:
                 # nothing to suggest, Discord refuses an empty dropdown
-                await ctx.respond(embed=self._get_tz_error_eb(value, no_list=True), ephemeral=True)
+                await ctx.respond(embed=self._get_tz_error_eb(value, no_list=True, lang=lang), ephemeral=True)
                 return
 
             # create a dropdown list
@@ -109,13 +111,13 @@ class TimezoneModule(discord.Cog):
                 ]
             # hand the dropdown to managing class
             dd = discord.ui.Select(
-                    placeholder='Select a timezone',
+                    placeholder=tr(lang, 'Select a timezone'),
                     min_values=1,
                     max_values=1,
                     options=options
                 )
 
-            tz_eb = self._get_tz_error_eb(value)
+            tz_eb = self._get_tz_error_eb(value, lang=lang)
             view = util.interaction.MulitDropdownView([dd])
             view.owner_id = ctx.author.id
 
@@ -135,8 +137,9 @@ class TimezoneModule(discord.Cog):
                 raise ValueError(f'User selected invalid timezone from dropdown {value}')
 
 
-        tz_eb = util.timezones.timezone_embed(value, title='New Timezone', intro='The timezone will be set to')
+        tz_eb = util.timezones.timezone_embed(value, title='New Timezone', intro='The timezone will be set to', lang=lang)
         view = util.interaction.ConfirmDenyView(dangerous_action=False)
+        view.set_lang(lang)
         view.owner_id = ctx.author.id
 
         if not responded:
@@ -186,7 +189,7 @@ class TimezoneModule(discord.Cog):
             return
 
         if not lib.permissions.can_change_settings(ctx.author):
-            await ctx.respond(embed=lib.permissions.missing_settings_permission_embed(), ephemeral=True)
+            await ctx.respond(embed=lib.permissions.missing_settings_permission_embed(lang_of(ctx)), ephemeral=True)
             return
 
         await self.set_timezone(ctx, ctx.guild.id, new_timezone)

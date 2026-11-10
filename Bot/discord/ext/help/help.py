@@ -1,4 +1,6 @@
 import discord
+
+from lib.i18n import lang_of, tr
 import logging
 from datetime import datetime
 from dateutil import tz
@@ -13,13 +15,16 @@ class HelpException(Exception):
 
 
 class HelpElement:
-    def __init__(self, cmd_name: str, description: str):
+    def __init__(self, cmd_name: str, description: str, translations: dict = None):
         self.cmd_name =  cmd_name
         self.help = description
+        # {'fr': description}
+        self.translations = translations or {}
 
 
 class HelpPage:
-    def __init__(self, name: str, title: str, emoji=None, description:str = None, short_description:str=None, elements:list[HelpElement] = [], override_footer:str = None):
+    def __init__(self, name: str, title: str, emoji=None, description:str = None, short_description:str=None, elements:list[HelpElement] = [], override_footer:str = None,
+                 translations: dict = None):
         self.name=name
         self.title = title
         self.emoji = emoji
@@ -27,22 +32,25 @@ class HelpPage:
         self.short_descr = short_description
         self.elements = elements
         self.override_footer = override_footer
+        # {'fr': (title, description)}
+        self.translations = translations or {}
 
-    def to_embed(self, footer) -> discord.Embed:
-        embed = discord.Embed(title=self.title, description=self.description)
+    def to_embed(self, footer, lang='en') -> discord.Embed:
+        title, description = self.translations.get(lang, (self.title, self.description))
+        embed = discord.Embed(title=title, description=description)
 
         for el in self.elements:
-            embed.add_field(name=el.cmd_name, value=el.help, inline=False)
+            embed.add_field(name=el.cmd_name, value=el.translations.get(lang, el.help), inline=False)
 
         if footer or self.override_footer:
-            embed.add_field(name='\u200b', inline=False, value=self.override_footer or footer)
+            embed.add_field(name='\u200b', inline=False, value=tr(lang, self.override_footer or footer))
 
         return embed
 
-    def to_option(self, current_page=None) -> discord.SelectOption:
+    def to_option(self, current_page=None, lang='en') -> discord.SelectOption:
         return discord.SelectOption(
-            label=f'{self.name.title()} Page',
-            description=self.short_descr or self.name.title(),
+            label=tr(lang, f'{self.name.title()} Page'),
+            description=tr(lang, self.short_descr or self.name.title()),
             value=self.name,
             emoji=self.emoji,
             default=(self.name == current_page)
@@ -88,6 +96,7 @@ class Help(discord.Cog):
     github_url = None
     tos_text = None
     privacy_text = None
+    privacy_text_fr = None
     default_footer = None
 
     def __init__(self, client):
@@ -152,11 +161,13 @@ class Help(discord.Cog):
             if isinstance(c, discord.SlashCommandGroup):
                 for sub_c in c.subcommands:
                     elements.append(
-                        HelpElement(cmd_name=f'/{sub_c.qualified_name}', description=sub_c.description or '\u200b')
+                        HelpElement(cmd_name=f'/{sub_c.qualified_name}', description=sub_c.description or '\u200b',
+                                    translations=getattr(sub_c, 'description_localizations', None) or None)
                     )    
             else:
                 elements.append(
-                    HelpElement(cmd_name=f'/{c.name}', description=c.description or '\u200b')
+                    HelpElement(cmd_name=f'/{c.name}', description=c.description or '\u200b',
+                                translations=getattr(c, 'description_localizations', None) or None)
                 )
 
         page = HelpPage(
@@ -164,7 +175,8 @@ class Help(discord.Cog):
             title='Command Overview',
             description='List of all available commands',
             elements=elements,
-            emoji='🌐'
+            emoji='🌐',
+            translations={'fr': ('Les commandes', 'Toutes les commandes du bot')}
         )
         Help.add_page(page, make_default=True)
 
@@ -241,11 +253,13 @@ class Help(discord.Cog):
 
 
     @staticmethod
-    def set_privacy_text(text: str):
+    def set_privacy_text(text: str, lang='en'):
+        """lang: a translation ('fr'), shown to the users whose Discord is in that language"""
+        attr = 'privacy_text' if lang == 'en' else f'privacy_text_{lang}'
         if Help.is_cog_scope:
-            Help.privacy_text = text
+            setattr(Help, attr, text)
         else:
-            Help.cog_class.privacy_text = text
+            setattr(Help.cog_class, attr, text)
         log.debug(f'updated privacy text')
 
 
@@ -286,7 +300,9 @@ class Help(discord.Cog):
         
 
     async def help_send_privacy(self, interaction: discord.Interaction):
-        await interaction.response.send_message(Help.privacy_text or '*Missing Content*', ephemeral=True)
+        lang = lang_of(interaction)
+        text = getattr(Help, f'privacy_text_{lang}', None) if lang != 'en' else None
+        await interaction.response.send_message(text or Help.privacy_text or '*Missing Content*', ephemeral=True)
 
 
     async def send_feedback(self, interaction: discord.Interaction):
@@ -368,6 +384,8 @@ class Help(discord.Cog):
             return
         
 
+        lang = lang_of(ctx)
+
         def get_help_view(current_page=None):
 
             view = discord.ui.View(timeout=0.001)
@@ -405,7 +423,7 @@ class Help(discord.Cog):
             components.append(
                 discord.ui.Button(
                     style=discord.ButtonStyle.secondary,
-                    label='Self-Test',
+                    label=tr(lang, 'Self-Test'),
                     custom_id='help_test_function',
                     row=0
                 )
@@ -425,7 +443,7 @@ class Help(discord.Cog):
                 components.append(
                     discord.ui.Button(
                         style=discord.ButtonStyle.secondary,
-                        label='Privacy',
+                        label=tr(lang, 'Privacy'),
                         custom_id='help_privacy',
                         row=1
                     )
@@ -433,10 +451,10 @@ class Help(discord.Cog):
 
             # === ROW 3 ===
             if len(Help.pages) > 1:
-                options = [Help.pages[k].to_option(current_page) for k in Help.pages]
+                options = [Help.pages[k].to_option(current_page, lang) for k in Help.pages]
                 components.append(discord.ui.Select(
                         options=options,
-                        placeholder='Please select a category',
+                        placeholder=tr(lang, 'Please select a category'),
                         min_values=1,
                         max_values=1,
                         row=3,
@@ -451,7 +469,7 @@ class Help(discord.Cog):
 
         page = Help.pages[page]
 
-        embed = page.to_embed(Help.default_footer)
+        embed = page.to_embed(Help.default_footer, lang)
         view = get_help_view(page.name)
 
         # permissions are always guaranteed
@@ -483,14 +501,15 @@ class Help(discord.Cog):
         
         # try-catch is the easiest approach for this problem
         # instead of checking all permission overwrites
-        eb = discord.Embed(title='Test Message', 
-                           description='You can safely delete this message')
+        lang = lang_of(ctx)
+        eb = discord.Embed(title=tr(lang, 'Test Message'),
+                           description=tr(lang, 'You can safely delete this message'))
         try:
             # the bot can always delete its own messages: don't leave test messages behind
             await ctx.channel.send(embed=eb, delete_after=1)
         except discord.Forbidden:
             # failure might still grant text_permission
-            text = 'Test Message, *please ignore this*'
+            text = tr(lang, 'Test Message, *please ignore this*')
             try:
                 await ctx.channel.send(text, delete_after=1)
             except discord.Forbidden:
@@ -508,7 +527,7 @@ class Help(discord.Cog):
         
         dm = await ctx.user.create_dm()
         try:
-            await dm.send('Self-testing... *please ignore this.*', delete_after=1)
+            await dm.send(tr(lang, 'Self-testing... *please ignore this.*'), delete_after=1)
         except discord.Forbidden:
             pass  # no permission on failure
         else:
@@ -523,47 +542,49 @@ class Help(discord.Cog):
             delivery_result = 'OK'
             delivery_hint = ''
         elif can_text:
-            delivery_result = '*Text Only*'
-            delivery_hint = '• Enable `Embed Links` permissions, to allow for a better reminder display\n'
+            delivery_result = tr(lang, '*Text Only*')
+            delivery_hint = tr(lang, '• Enable `Embed Links` permissions, to allow for a better reminder display\n')
             color = 0xcceb67
         else:
-            delivery_result = '**Failed**'
-            delivery_hint = '• Enable `Send Message` permissions for this text channel\n'
+            delivery_result = tr(lang, '**Failed**')
+            delivery_hint = tr(lang, '• Enable `Send Message` permissions for this text channel\n')
             color = 0xde4b55  # red-ish
 
         if can_dm:
             dm_result = 'OK'
             dm_hint = ''
         else:
-            dm_result = '**Failed**'
-            dm_hint = '• Allow me to send you DMs to configure reminders and to receive error information, '\
-                        '[change your preferences]({:s}) and test again.'.format(r'https://support.discord.com/hc/en-us/articles/217916488-Blocking-Privacy-Settings-')
+            dm_result = tr(lang, '**Failed**')
+            dm_hint = tr(lang, '• Allow me to send you DMs to configure reminders and to receive error information, '
+                               '[change your preferences]({url}) and test again.',
+                         url='https://support.discord.com/hc/en-us/articles/217916488-Blocking-Privacy-Settings-')
             if can_embed:
                 # do not overwrite the color of more severe errors
                 color = 0xcceb67
         
         
-        eb = discord.Embed(title='Self-Test',
+        eb = discord.Embed(title=tr(lang, 'Self-Test'),
                            description=delivery_hint + '\n' + dm_hint)
         eb.color = color
         
-        eb.add_field(name='Reminder delivery', value=delivery_result)
-        eb.add_field(name='DM permissions', value=dm_result)
-        
-        eb.add_field(name='Local Time', value=f'{local_time} (based on timezone settings)', inline=False)
+        eb.add_field(name=tr(lang, 'Reminder delivery'), value=delivery_result)
+        eb.add_field(name=tr(lang, 'DM permissions'), value=dm_result)
+
+        eb.add_field(name=tr(lang, 'Local Time'), value=tr(lang, '{time} (based on timezone settings)', time=local_time),
+                     inline=False)
 
 
 
 
-        eb.add_field(name='Discord API Latency', value=f'{ping} ms', inline=True)
-        eb.add_field(name='Library Latency*', value=f'{response_ms} ms', inline=True)
+        eb.add_field(name=tr(lang, 'Discord API Latency'), value=f'{ping} ms', inline=True)
+        eb.add_field(name=tr(lang, 'Library Latency*'), value=f'{response_ms} ms', inline=True)
 
 
         test_time = (datetime.now(tz.UTC)-created_at)
         test_ms = int(test_time.total_seconds()*1000)
-        eb.add_field(name='Self-Test Duration*', value=f'{test_ms} ms', inline=False)
+        eb.add_field(name=tr(lang, 'Self-Test Duration*'), value=f'{test_ms} ms', inline=False)
 
-        eb.set_footer(text='*this includes server and discord time inaccuracies towards `Coordinated Universal Time`')
+        eb.set_footer(text=tr(lang, '*this includes server and discord time inaccuracies towards `Coordinated Universal Time`'))
 
         
         await ctx.response.send_message(embed=eb, ephemeral=True)

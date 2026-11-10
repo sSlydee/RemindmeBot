@@ -1,6 +1,7 @@
 import discord
 
 from util.consts import Consts
+from lib.i18n import tr
 
 
 # commands usable everywhere once a user installed the app on their account:
@@ -55,7 +56,7 @@ def can_delete_reminder(rem, user) -> bool:
     return bool(rem.g_id) and can_moderate(user, rem.g_id)
 
 
-def missing_settings_permission_embed() -> discord.Embed:
-    return discord.Embed(title='Missing Permissions',
-                         description='You need the `Manage Server` permission to change the settings of this server.',
+def missing_settings_permission_embed(lang='en') -> discord.Embed:
+    return discord.Embed(title=tr(lang, 'Missing Permissions'),
+                         description=tr(lang, 'You need the `Manage Server` permission to change the settings of this server.'),
                          color=Consts.col_err)

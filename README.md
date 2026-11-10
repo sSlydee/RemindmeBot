@@ -212,11 +212,12 @@ after that, they are deleted.
 
 Members whose Discord is in French get the bot in French: the command
 descriptions, the time preview while typing (`demain 9h → mer. 11 nov.
-09:00`), the replies, and the reminders they create when delivered, with
-their buttons (a reminder is sent in the language of its author), and the
-menus of `/reminder_list`. `/settings`, `/timezone`, the pages of `/help` and
-the repetitions written in words (*every friday at 7am*) are still in English
-for now. Everyone else gets English.
+09:00`), the replies, the menus of `/reminder_list`, `/settings`,
+`/timezone` and `/help` (with a French syntax page), and the repetitions
+written in words (*tous les lundis à 9h*; a rare rule French can't say yet
+stays in English). A reminder is delivered in the language of its author,
+with its buttons; a click is answered in the language of whoever clicked.
+Everyone else gets English.
 
 ### Privacy
 

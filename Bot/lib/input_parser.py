@@ -530,6 +530,138 @@ def rrule_to_english(rrule, now=None):
     return text
 
 
+_FR_DAY = {'MO': 'lundi', 'TU': 'mardi', 'WE': 'mercredi', 'TH': 'jeudi', 'FR': 'vendredi',
+           'SA': 'samedi', 'SU': 'dimanche'}
+_FR_MONTH = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre',
+             'octobre', 'novembre', 'décembre']
+_WEEKDAYS = ['MO', 'TU', 'WE', 'TH', 'FR']
+
+
+def _fr_join(items: list) -> str:
+    return items[0] if len(items) == 1 else ', '.join(items[:-1]) + ' et ' + items[-1]
+
+
+def _fr_nth(n: int) -> str:
+    """1 → '1er', 2 → '2e', -1 → 'dernier', -2 → 'avant-dernier'"""
+    if n == -1:
+        return 'dernier'
+    if n == -2:
+        return 'avant-dernier'
+    if n < 0:
+        raise ValueError(n)
+    return '1er' if n == 1 else f'{n}e'
+
+
+def _rule_fr(rule_str: str, start=True) -> str:
+    """a repetition rule in French words; ValueError for the rules it can't say"""
+    from lib.i18n import date_str
+    dtstart = None
+    parts = {}
+    for line in rule_str.splitlines():
+        line = line.strip()
+        if line.upper().startswith('DTSTART'):
+            value = line.split(':', 1)[1]
+            dtstart = datetime.strptime(value.rstrip('Z')[:15], '%Y%m%dT%H%M%S')
+        elif line.upper().startswith('RRULE:') or ('FREQ=' in line.upper() and '=' in line):
+            body = line.split(':', 1)[1] if line.upper().startswith('RRULE:') else line
+            parts = dict(part.split('=', 1) for part in body.upper().split(';') if part)
+    if not parts or set(parts) - {'FREQ', 'INTERVAL', 'BYDAY', 'BYMONTHDAY', 'BYMONTH', 'BYHOUR', 'BYMINUTE',
+                                  'BYSECOND', 'COUNT', 'UNTIL', 'WKST'}:
+        raise ValueError('not supported')
+    if parts.get('BYSECOND', '0') != '0':
+        raise ValueError('seconds')
+
+    freq = parts['FREQ']
+    n = int(parts.get('INTERVAL', 1))
+    days = [d for d in parts.get('BYDAY', '').split(',') if d]
+    monthdays = [int(d) for d in parts.get('BYMONTHDAY', '').split(',') if d]
+    months = [int(m) for m in parts.get('BYMONTH', '').split(',') if m]
+
+    if freq == 'MINUTELY':
+        text = 'toutes les minutes' if n == 1 else f'toutes les {n} minutes'
+    elif freq == 'HOURLY':
+        text = 'toutes les heures' if n == 1 else f'toutes les {n} heures'
+    elif freq == 'DAILY':
+        text = 'tous les jours' if n == 1 else f'tous les {n} jours'
+    elif freq == 'WEEKLY':
+        every = '' if n == 1 else f', toutes les {n} semaines'
+        if any(not d.isalpha() for d in days):
+            raise ValueError('nth day in a week')
+        if sorted(days) == ['SA', 'SU']:
+            text = 'tous les week-ends' + every
+        elif sorted(days) == sorted(_WEEKDAYS):
+            text = 'en semaine' + every
+        elif days:
+            text = 'tous les ' + _fr_join([_FR_DAY[d] + 's' for d in days]) + every
+        else:
+            text = 'toutes les semaines' if n == 1 else f'toutes les {n} semaines'
+    elif freq == 'MONTHLY':
+        each = ' de chaque mois' if n == 1 else f', tous les {n} mois'
+        if days:
+            nths = []
+            for d in days:
+                m = re.fullmatch(r'([+-]?\d+)?([A-Z]{2})', d)
+                if not m or not m[1]:
+                    raise ValueError('day without its rank')
+                nths.append(f'{_fr_nth(int(m[1]))} {_FR_DAY[m[2]]}')
+            text = 'le ' + _fr_join(nths) + each
+        elif monthdays:
+            if any(d < -1 for d in monthdays):
+                raise ValueError('day from the end')
+            text = 'le ' + _fr_join(['dernier jour' if d == -1 else ('1er' if d == 1 else str(d)) for d in monthdays]) + each
+        else:
+            text = 'tous les mois' if n == 1 else f'tous les {n} mois'
+    elif freq == 'YEARLY':
+        every = 'tous les ans' if n == 1 else f'tous les {n} ans'
+        if days:
+            raise ValueError('days in a year')
+        if months and monthdays and len(months) == 1:
+            text = every + ' le ' + _fr_join(['1er' if d == 1 else str(d) for d in monthdays]) + f' {_FR_MONTH[months[0] - 1]}'
+        elif months and not monthdays:
+            text = every + ' en ' + _fr_join([_FR_MONTH[m - 1] for m in months])
+        elif not months and not monthdays:
+            text = every
+        else:
+            raise ValueError('several months with days')
+    else:
+        raise ValueError(freq)
+
+    hours = [int(h) for h in parts.get('BYHOUR', '').split(',') if h]
+    minutes = [int(m) for m in parts.get('BYMINUTE', '').split(',') if m]
+    if hours:
+        if len(minutes) > 1:
+            raise ValueError('several minutes')
+        minute = minutes[0] if minutes else 0
+        text += ' à ' + _fr_join([f'{h}h{minute:02d}' if minute else f'{h}h' for h in hours])
+    elif minutes and freq == 'HOURLY':
+        text += ' à ' + _fr_join([f'{m:02d}' for m in minutes]) + ' min'
+
+    if start and dtstart:
+        text += f', à partir du {date_str(dtstart, "fr", with_year=True)}'
+    if 'UNTIL' in parts:
+        until = datetime.strptime(parts['UNTIL'].rstrip('Z')[:8], '%Y%m%d')
+        text += f' jusqu’au {"1er" if until.day == 1 else until.day} {_FR_MONTH[until.month - 1]} {until.year}'
+    if 'COUNT' in parts:
+        count = int(parts['COUNT'])
+        text += ', 1 fois' if count == 1 else f', {count} fois'
+    return text
+
+
+def rule_text(rule, lang='en', now=None, start=True) -> str:
+    """a repetition rule in words, in that language
+
+    start: with the date it starts on ('starting Thu Nov 12, 2026 9am')
+    A rule that French can't say yet stays in English.
+    """
+    if lang == 'fr':
+        try:
+            return _rule_fr(str(rule), start)
+        except (ValueError, KeyError, IndexError):
+            pass
+    text = rrule_to_english(rule, now=now)
+    return text if start else text.split(' starting ')[0]
+
+
 _UNTIL_VALUE_RE = re.compile(r'^(\d{8})(?:T(\d{6}))?(Z)?$', re.IGNORECASE)
 
 

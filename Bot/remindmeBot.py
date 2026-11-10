@@ -94,6 +94,50 @@ SYNTAX_HELP_PAGE = \
                 'Note: eow is end of the working week (Friday Evening)\n'\
                 '```'
 
+SYNTAX_HELP_PAGE_FR = \
+                'exemples simples :\n'\
+                '> /remindme `time: dans 2 jours` `message: Bonjour`\n'\
+                '> /remind `target: @Membre` `time: demain 9h` `message: Bonjour`\n'\
+                '> /remind `target: @Rôle` `time: vendredi 18h30` `message: Bonjour`\n'\
+                '\n'\
+                'rappels qui se répètent\n'\
+                '> /remindme `time: tous les vendredis à 14h15` `message: rendez-vous`\n'\
+                '> /remindme `time: tous les mois le 15 à 9h` `message: facture`\n'\
+                '\n'\
+                'durées (combinables)\n'\
+                '```2h, 1h30, dans 3 jours, 1y 1mo 2 days -5h```'\
+                '\n'\
+                'd’autres formats\n'\
+                '```'\
+                '• demain 9h, après-demain 10h, lundi prochain\n'\
+                '• 5 juillet, le 1er décembre à 10h, 20/11 à 9h\n'\
+                '• à 18h30, midi, minuit\n'\
+                '• en semaine à 8h, tous les week-ends, toutes les 2 semaines\n'\
+                '• le premier lundi du mois, jusqu’au 20 décembre\n'\
+                '\n'\
+                'Note : 9h et 18h30 seuls sont des durées (dans 9 h) ;\n'\
+                '       écris à 18h30 pour une heure.\n'\
+                'Les dates mettent le jour d’abord (01/02/03 = 1er février 2003)\n'\
+                '```'\
+                '\n'\
+                'abréviations\n'\
+                '```'\
+                '• eoy, eom, eow, eod : fin d’année/mois/semaine/journée\n'\
+                '• y, mo, w, d, h, m : ans, mois, semaines, jours, heures, minutes\n'\
+                '\n'\
+                'Note : eow est la fin de la semaine de travail (vendredi soir)\n'\
+                '```'
+
+TIMEZONE_HELP_PAGE_FR = \
+                    'Change le fuseau horaire avec `/timezone <nom>`\n'\
+                    '\n'\
+                    'Le bot propose des fuseaux valides pendant que tu tapes\n'\
+                    '\n'\
+                    '• Tous les fuseaux [de l’IANA](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) '\
+                    'sont acceptés\n'\
+                    '• Certains sont marqués « obsolètes » : ils marchent, avec un avertissement\n'\
+                    '• Préfère un fuseau géographique (ex. `Europe/Paris`) à un fuseau général (ex. `CET`)'
+
 TIMEZONE_HELP_PAGE = \
                     'Set a new timezone with `/timezone <string>`\n'\
                     '\n'\
@@ -213,6 +257,7 @@ def config_help():
     # private, only its owner can add it (README)
     Help.invite_permissions(None)
     Help.set_privacy_text(util.privacy.PRIVACY_TEXT)
+    Help.set_privacy_text(util.privacy.PRIVACY_TEXT_FR, lang='fr')
     Help.set_github_url(Consts.github_url)
 
 
@@ -220,7 +265,8 @@ def config_help():
         name='syntax',
         title='Syntax Help',
         emoji='✏️', # pencil2
-        description=SYNTAX_HELP_PAGE
+        description=SYNTAX_HELP_PAGE,
+        translations={'fr': ('Aide à la syntaxe', SYNTAX_HELP_PAGE_FR)}
     )
     Help.add_page(page)
 
@@ -229,7 +275,8 @@ def config_help():
         name='timezone',
         title='Timezone Help',
         emoji='⏱️', # stopwatch
-        description=TIMEZONE_HELP_PAGE
+        description=TIMEZONE_HELP_PAGE,
+        translations={'fr': ('Aide sur le fuseau horaire', TIMEZONE_HELP_PAGE_FR)}
     )
     Help.add_page(page)
 

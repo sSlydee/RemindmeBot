@@ -9,16 +9,18 @@ from util.consts import Consts
 import lib.permissions
 import util.interaction
 import util.timezones
+from lib.i18n import lang_of, tr
 from lib.Connector import Connector
 
 
 log = logging.getLogger('Remindme.Settings')
 
 class SettingsView(util.interaction.CustomView):
-    def __init__(self, scope: Connector.Scope, author: Union[discord.User, discord.Member], *args, **kwargs):
+    def __init__(self, scope: Connector.Scope, author: Union[discord.User, discord.Member], *args, lang='en', **kwargs):
         super().__init__(*args, **kwargs)
         self.scope: Connector.Scope = scope
         self.update_ui_elements()
+        self.set_lang(lang)
 
         # server settings need 'Manage Server' (administrators have it)
         self.forbidden = not lib.permissions.can_change_settings(author)
@@ -107,20 +109,20 @@ class SettingsView(util.interaction.CustomView):
 
 
     def get_embed(self) -> discord.Embed:
-        eb = discord.Embed(title='Remindme Settings',
-                description='Server Managers can edit these settings by pressing the '\
-                            'corresponding buttons below.\n'\
-                            'The grayed-out buttons are the current selected options.\n\n'\
-                            '**Members\' reminders**: new reminders for one member are sent in their channel, '\
-                            'or by DM (in the channel if the DM fails). Reminders for a role stay in the channel.')
+        lang = self.lang
+        eb = discord.Embed(title=tr(lang, 'Remindme Settings'),
+                description=tr(lang, 'Server Managers can edit these settings by pressing the corresponding buttons below.\n'
+                                     'The grayed-out buttons are the current selected options.\n\n'
+                                     '**Members\' reminders**: new reminders for one member are sent in their channel, '
+                                     'or by DM (in the channel if the DM fails). Reminders for a role stay in the channel.'))
 
         if self.scope.is_private:
-            eb.description = 'Your own settings: the style of the reminders the bot sends you by DM. '\
-                             'The other settings are for servers.'
+            eb.description = tr(lang, 'Your own settings: the style of the reminders the bot sends you by DM. '
+                                      'The other settings are for servers.')
 
         if self.forbidden:
             eb.color = Consts.col_err
-            eb.description = 'You need the `Manage Server` permission to change the settings of this server.'
+            eb.description = tr(lang, 'You need the `Manage Server` permission to change the settings of this server.')
 
         return eb
     
@@ -141,7 +143,7 @@ class SettingsView(util.interaction.CustomView):
         # show timezone embed
         eb = util.timezones.timezone_embed(Connector.get_timezone(self.scope.instance_id),
                                            title='Current Timezone', intro='The timezone is set to',
-                                           outro='\nUse `/timezone` to edit this value')
+                                           outro='\nUse `/timezone` to edit this value', lang=lang_of(interaction))
         await interaction.response.send_message(embed=eb, ephemeral=True)
 
 
@@ -252,7 +254,7 @@ class SettingsModule(commands.Cog):
         )
 
 
-        view = SettingsView(scope=scope, author=ctx.author)
+        view = SettingsView(scope=scope, author=ctx.author, lang=lang_of(ctx))
         view.origin = await ctx.respond(embed=view.get_embed(), view=view, ephemeral=True)
 
 
