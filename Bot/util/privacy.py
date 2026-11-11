@@ -8,7 +8,7 @@ BACKUP_KEEP_DAYS = 14
 # one message: at most 2000 characters
 PRIVACY_TEXT = (
     '**Privacy**\n'
-    'This bot runs on a server of its owner. It keeps what it needs to send your reminders, '
+    'This bot runs on a machine its owner manages. It keeps what it needs to send your reminders, '
     'and shares it with no one but Discord.\n\n'
     '**What is stored**\n'
     '• your reminders: text, title, image link, dates and repetitions, and the language of your Discord '
@@ -32,7 +32,7 @@ PRIVACY_TEXT = (
 
 PRIVACY_TEXT_FR = (
     '**Confidentialité**\n'
-    'Ce bot tourne sur un serveur de son propriétaire. Il garde ce qu’il lui faut pour envoyer tes rappels, '
+    'Ce bot tourne sur une machine gérée par son propriétaire. Il garde ce qu’il lui faut pour envoyer tes rappels, '
     'et ne le partage qu’avec Discord.\n\n'
     '**Ce qui est stocké**\n'
     '• tes rappels : texte, titre, lien d’image, dates et répétitions, et la langue de ton Discord '
